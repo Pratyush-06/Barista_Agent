@@ -1,139 +1,186 @@
+# backend/src/agent.py  (replace your current file with this)
 import logging
+import json
+import os
+from typing import Annotated
 
 from dotenv import load_dotenv
-from livekit.agents import (
-    Agent,
-    AgentSession,
-    JobContext,
-    JobProcess,
-    MetricsCollectedEvent,
-    RoomInputOptions,
-    WorkerOptions,
-    cli,
-    metrics,
-    tokenize,
-    # function_tool,
-    # RunContext
-)
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-logger = logging.getLogger("agent")
+load_dotenv()
+logger = logging.getLogger("voice-agent")
+logging.basicConfig(level=logging.INFO)
 
-load_dotenv(".env.local")
+# Attempt to import LiveKit agent components
+try:
+    from livekit.agents import (
+        AutoSubscribe,
+        JobContext,
+        WorkerOptions,
+        cli,
+        llm,
+        Agent,
+        AgentSession,
+        function_tool,
+    )
+except Exception as e:
+    logger.exception("Failed to import livekit.agents - are the package deps installed?")
+    raise
 
+# Try to import plugins; provide safe fallbacks if imports fail
+# murf
+try:
+    from livekit.plugins import murf
+    MURF_AVAILABLE = True
+except Exception:
+    murf = None
+    MURF_AVAILABLE = False
+    logger.warning("livekit.plugins.murf not available; TTS will be disabled or fallback.")
 
-class Assistant(Agent):
-    def __init__(self) -> None:
-        super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
-        )
+# silero (VAD)
+try:
+    from livekit.plugins import silero
+    SILERO_AVAILABLE = True
+except Exception:
+    silero = None
+    SILERO_AVAILABLE = False
+    logger.warning("livekit.plugins.silero not available; using simple VAD fallback.")
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+# deepgram (STT)
+try:
+    from livekit.plugins import deepgram
+    DEEPGRAM_AVAILABLE = True
+except Exception:
+    deepgram = None
+    DEEPGRAM_AVAILABLE = False
+    logger.warning("livekit.plugins.deepgram not available; STT may be disabled.")
 
+# google (LLM)
+try:
+    from livekit.plugins import google
+    GOOGLE_AVAILABLE = True
+except Exception:
+    google = None
+    GOOGLE_AVAILABLE = False
+    logger.warning("livekit.plugins.google not available; LLM may be disabled.")
 
-def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+# --- TOOL: save_order ---
+@function_tool
+async def save_order(
+    drink_type: Annotated[str, "The type of coffee (e.g., Latte, Cappuccino)"],
+    size: Annotated[str, "The size (Small, Medium, Large)"],
+    milk: Annotated[str, "Milk type (Whole, Oat, Almond, None)"],
+    extras: Annotated[str, "Extras (Sugar, Syrup, None)"],
+    name: Annotated[str, "Customer name"]
+):
+    """Save the order to a file once all details are collected."""
+    # normalize extras into list
+    extras_list = []
+    if extras and extras.strip().lower() not in ("none", "no", ""):
+        extras_list = [x.strip() for x in extras.split(",") if x.strip()]
 
-
-async def entrypoint(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
-    ctx.log_context_fields = {
-        "room": ctx.room.name,
+    order_data = {
+        "drinkType": drink_type.strip(),
+        "size": size.strip(),
+        "milk": milk.strip(),
+        "extras": extras_list,
+        "name": name.strip()
     }
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
+    # ensure orders folder
+    orders_dir = os.path.join(os.path.dirname(__file__), "..", "orders")
+    os.makedirs(orders_dir, exist_ok=True)
+    out_path = os.path.join(orders_dir, "latest_order.json")
+
+    logger.info(f"Saving order to {out_path}: {order_data}")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(order_data, f, indent=2, ensure_ascii=False)
+
+    return f"Order saved to {out_path}. It will be ready in about 5 minutes."
+
+# --- AGENT ENTRYPOINT ---
+async def entrypoint(ctx: JobContext):
+    # Connect to the room
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    participant = await ctx.wait_for_participant()
+
+    # Prepare tool list (we always include save_order)
+    tools = [save_order]
+
+    # Build agent instructions
+    instructions = (
+        "You are a friendly barista at 'Starbucks'. "
+        "Collect these 5 pieces of info: Drink, Size, Milk, Extras, Name. "
+        "Ask clarifying questions. Once you have ALL info, call 'save_order'."
+    )
+
+    agent = Agent(instructions=instructions, tools=tools)
+
+    # Prepare session components with graceful fallbacks
+    # VAD
+    vad = None
+    if SILERO_AVAILABLE:
+        try:
+            vad = silero.VAD.load()
+        except Exception:
+            logger.exception("silero.VAD.load() failed - falling back to None VAD")
+            vad = None
+
+    # STT
+    stt = None
+    if DEEPGRAM_AVAILABLE:
+        try:
+            stt = deepgram.STT()
+        except Exception:
+            logger.exception("Failed to initialize Deepgram STT")
+            stt = None
+
+    # LLM
+    llm_plugin = None
+    if GOOGLE_AVAILABLE:
+        try:
+            llm_plugin = google.LLM()
+        except Exception:
+            logger.exception("Failed to initialize Google LLM")
+            llm_plugin = None
+
+    # TTS (Murf Falcon) - use env var safely and fallback if missing
+    murf_key = os.environ.get("MURF_API_KEY")
+    tts_plugin = None
+    if MURF_AVAILABLE and murf_key:
+        try:
+            # model name might vary; keep this generic
+            tts_plugin = murf.TTS(model="en-US-falcon", api_key=murf_key)
+        except Exception:
+            logger.exception("Failed to initialize Murf TTS plugin; TTS disabled")
+            tts_plugin = None
+    else:
+        if not MURF_AVAILABLE:
+            logger.warning("Murf plugin not available; no TTS will be used.")
+        if not murf_key:
+            logger.warning("MURF_API_KEY missing; set it in backend/.env.local to enable TTS.")
+
+    # If llm or stt are missing, agent can still run in text-only demo mode, but warn
+    if not llm_plugin:
+        logger.warning("LLM plugin not available. Agent may not produce full intelligent replies.")
+    if not stt:
+        logger.warning("STT plugin not available. You may need to use text input instead.")
+
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
-        turn_detection=MultilingualModel(),
-        vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
-        preemptive_generation=True,
+        vad=vad,
+        stt=stt,
+        llm=llm_plugin,
+        tts=tts_plugin,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    # Start the session
+    await session.start(agent=agent, room=ctx.room)
 
-    # Metrics collection, to measure pipeline performance
-    # For more information, see https://docs.livekit.io/agents/build/metrics/
-    usage_collector = metrics.UsageCollector()
-
-    @session.on("metrics_collected")
-    def _on_metrics_collected(ev: MetricsCollectedEvent):
-        metrics.log_metrics(ev.metrics)
-        usage_collector.collect(ev.metrics)
-
-    async def log_usage():
-        summary = usage_collector.get_summary()
-        logger.info(f"Usage: {summary}")
-
-    ctx.add_shutdown_callback(log_usage)
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-        room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
-            noise_cancellation=noise_cancellation.BVC(),
-        ),
-    )
-
-    # Join the room and connect to the user
-    await ctx.connect()
-
+    # Greet
+    await session.generate_reply(instructions="Greet the customer warmly and ask what they'd like to order")
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+    try:
+        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    except Exception:
+        logger.exception("Failed to run the agent app")
+        raise
