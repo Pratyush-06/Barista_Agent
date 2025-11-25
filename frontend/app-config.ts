@@ -20,20 +20,20 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'LiveKit',
-  pageTitle: 'LiveKit Voice Agent',
-  pageDescription: 'A voice agent built with LiveKit',
+  companyName: 'Physics Wallah',
+  pageTitle: 'Physics Wallah — Voice Tutor',
+  pageDescription: 'Practice aloud with an interactive voice tutor inspired by Physics Wallah',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/lk-logo.svg',
-  accent: '#002cf2',
-  logoDark: '/lk-logo-dark.svg',
-  accentDark: '#1fd5f9',
-  startButtonText: 'Start call',
+  logo: '/pw-logo.svg',
+  accent: '#00C853',
+  logoDark: '/pw-logo-dark.svg',
+  accentDark: '#00E676',
+  startButtonText: 'Start Voice Tutor',
 
   // for LiveKit Cloud Sandbox
   sandboxId: undefined,

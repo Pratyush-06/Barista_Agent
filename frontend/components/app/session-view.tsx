@@ -72,6 +72,14 @@ export const SessionView = ({
   const messages = useChatMessages();
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = React.useState<'learning' | 'quiz' | 'teach-back' | undefined>();
+
+  React.useEffect(() => {
+    const modeStr = sessionStorage.getItem('tutor-mode');
+    if (modeStr && ['learning', 'quiz', 'teach-back'].includes(modeStr)) {
+      setMode(modeStr as 'learning' | 'quiz' | 'teach-back');
+    }
+  }, []);
 
   const controls: ControlBarControls = {
     leave: true,
@@ -91,7 +99,22 @@ export const SessionView = ({
   }, [messages]);
 
   return (
-    <section className="bg-background relative z-10 h-full w-full overflow-hidden" {...props}>
+    <section className="bg-gradient-to-b from-[#051923] via-[#062b20] to-[#071a12] relative z-10 h-full w-full overflow-hidden" {...props}>
+      {/* Header with mode badge */}
+      {mode && (
+        <div className="absolute top-6 left-6 right-6 z-50 flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-white/90">Physics Wallah — Voice Tutor</h2>
+          <div className={cn(
+            'px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider',
+            mode === 'learning' && 'bg-[#ffd600] text-black',
+            mode === 'quiz' && 'bg-[#00e676] text-black',
+            mode === 'teach-back' && 'bg-[#81d4fa] text-black'
+          )}>
+            {mode === 'teach-back' ? 'Teach-Back' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+          </div>
+        </div>
+      )}
+
       {/* Chat Transcript */}
       <div
         className={cn(

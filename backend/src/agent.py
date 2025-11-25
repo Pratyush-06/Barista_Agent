@@ -1,263 +1,241 @@
-# backend/src/agent.py  -- Day 3: Wellness agent
+"""
+Coding Tutor Agent
+Company: Physics Wallah
+
+This file mirrors the Day 4 Teach-the-Tutor pattern but for Programming/Coding.
+Features:
+- Small JSON knowledge base (coding_tutor_content.json) auto-created on first run.
+- Three modes: learn (Matthew), quiz (Alicia), teach_back (Ken).
+- LiveKit agent integration placeholders and Murf TTS configuration.
+
+Run: python coding_tutor_agent.py
+"""
+
 import logging
 import json
 import os
-from datetime import datetime
-from typing import Annotated, Optional, List, Dict, Any
+from dataclasses import dataclass
+from typing import Literal, Optional, Annotated
 
 from dotenv import load_dotenv
+from pydantic import Field
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    JobProcess,
+    RoomInputOptions,
+    WorkerOptions,
+    cli,
+    function_tool,
+    RunContext,
+)
 
-load_dotenv()
-logger = logging.getLogger("wellness-agent")
-logging.basicConfig(level=logging.INFO)
+# Plugins
+from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-# --- LiveKit agent API (no pipeline here) ---
-try:
-    from livekit.agents import (
-        AutoSubscribe,
-        JobContext,
-        WorkerOptions,
-        cli,
-        llm,
-        Agent,
-        AgentSession,
-        function_tool,
-    )
-except Exception:
-    logger.exception("Failed to import livekit.agents. Are dependencies installed?")
-    raise
+logger = logging.getLogger("coding_tutor_agent")
+load_dotenv(".env.local")
 
-# --- Plugins ---
-try:
-    from livekit.plugins import murf
-    MURF_AVAILABLE = True
-except Exception:
-    murf = None
-    MURF_AVAILABLE = False
-    logger.warning("livekit.plugins.murf not available; TTS disabled.")
+# -----------------------------
+# Company name
+# -----------------------------
+COMPANY_NAME = "Physics Wallah"
 
-try:
-    from livekit.plugins import silero
-    SILERO_AVAILABLE = True
-except Exception:
-    silero = None
-    SILERO_AVAILABLE = False
-    logger.warning("livekit.plugins.silero not available; VAD disabled.")
+# -----------------------------
+# Content file
+# -----------------------------
+DATA_DIR = "shared-data"
+CONTENT_FILE = os.path.join(DATA_DIR, "coding_tutor_content.json")
 
-try:
-    from livekit.plugins import deepgram
-    DEEPGRAM_AVAILABLE = True
-except Exception:
-    deepgram = None
-    DEEPGRAM_AVAILABLE = False
-    logger.warning("livekit.plugins.deepgram not available; STT disabled.")
-
-try:
-    from livekit.plugins import google
-    GOOGLE_AVAILABLE = True
-except Exception:
-    google = None
-    GOOGLE_AVAILABLE = False
-    logger.warning("livekit.plugins.google not available; LLM disabled.")
-
-# --- Paths & helpers ---
-BASE_DIR = os.path.dirname(__file__)
-WELLNESS_LOG = os.path.normpath(os.path.join(BASE_DIR, "..", "wellness_log.json"))
-
-
-def now_ts() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def read_all_entries() -> List[Dict[str, Any]]:
-    if not os.path.exists(WELLNESS_LOG):
-        return []
-    try:
-        with open(WELLNESS_LOG, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def last_entry() -> Optional[Dict[str, Any]]:
-    entries = read_all_entries()
-    if not entries:
-        return None
-    return entries[-1]
-
-
-def last_entry_summary_line() -> Optional[str]:
-    """Return a short spoken line summarizing the last check-in."""
-    entry = last_entry()
-    if not entry:
-        return None
-    mood = entry.get("mood", "").strip() or "unspecified"
-    energy = entry.get("energy", "").strip() or "unspecified"
-    objs = entry.get("objectives", [])
-    objs_str = ", ".join(objs) if objs else "no specific objectives"
-    return (
-        f"Last time we talked, you said you were feeling {mood} "
-        f"with energy {energy}, and your main goals were {objs_str}."
-    )
-
-
-# --- Tool: log_checkin (used by LLM at the end) ---
-@function_tool
-async def log_checkin(
-    mood: Annotated[str, "Short mood description"],
-    energy: Annotated[str, "Energy level (low/medium/high or text)"],
-    objectives: Annotated[str, "One to three objectives (comma separated)"],
-    summary: Annotated[str, "Short assistant-generated recap sentence"],
-):
-    """
-    Append a wellness check-in entry to wellness_log.json.
-    """
-    entry = {
-        "timestamp": now_ts(),
-        "mood": mood.strip(),
-        "energy": energy.strip(),
-        "objectives": [o.strip() for o in objectives.split(",") if o.strip()],
-        "summary": summary.strip(),
+DEFAULT_CONTENT = [
+    {
+        "id": "variables",
+        "title": "Variables & Data Types",
+        "summary": "Variables are containers for storing data values. In Python, you create a variable the moment you assign a value to it. Common data types include Integers (whole numbers), Floats (decimals), Strings (text), and Booleans (True/False).",
+        "sample_question": "What is the difference between an Integer and a String?"
+    },
+    {
+        "id": "loops",
+        "title": "Loops",
+        "summary": "Loops allow you to repeat a block of code. A 'for' loop is used for iterating over a sequence (like a list, tuple, or string). A 'while' loop repeats as long as a specific condition remains true.",
+        "sample_question": "When would you use a 'for' loop instead of a 'while' loop?"
+    },
+    {
+        "id": "functions",
+        "title": "Functions",
+        "summary": "A function is a block of code which only runs when it is called. You can pass data, known as parameters, into a function. A function can return data as a result. In Python, they are defined using the 'def' keyword.",
+        "sample_question": "Why do we use functions in programming instead of writing the same code twice?"
+    },
+    {
+        "id": "conditionals",
+        "title": "Conditionals (If/Else)",
+        "summary": "Conditionals support logical conditions from mathematics. They allow the program to make decisions. Python uses 'if', 'elif', and 'else' keywords to execute code only if certain conditions are met.",
+        "sample_question": "Explain how an 'if-else' statement controls the flow of a program."
     }
-
-    try:
-        entries = read_all_entries()
-        entries.append(entry)
-        with open(WELLNESS_LOG, "w", encoding="utf-8") as f:
-            json.dump(entries, f, indent=2, ensure_ascii=False)
-        logger.info("Saved wellness entry: %s", entry)
-        return "Saved your check-in. I'll remember this next time we talk."
-    except Exception:
-        logger.exception("Failed to save wellness_log.json")
-        return "Sorry, I couldn't save your check-in due to a server error."
+]
 
 
-# --- Main entrypoint ---
+def ensure_content_file():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if not os.path.exists(CONTENT_FILE):
+        with open(CONTENT_FILE, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_CONTENT, f, indent=2)
+        print(f"Created sample content at {CONTENT_FILE}")
+
+
+def load_content():
+    ensure_content_file()
+    with open(CONTENT_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+COURSE_CONTENT = load_content()
+
+# -----------------------------
+# State
+# -----------------------------
+@dataclass
+class TutorState:
+    current_topic_id: Optional[str] = None
+    current_topic_data: Optional[dict] = None
+    mode: Literal["learn", "quiz", "teach_back"] = "learn"
+
+    def set_topic(self, topic_id: str) -> bool:
+        topic_id = topic_id.lower()
+        topic = next((t for t in COURSE_CONTENT if t["id"] == topic_id), None)
+        if topic:
+            self.current_topic_id = topic_id
+            self.current_topic_data = topic
+            return True
+        return False
+
+@dataclass
+class Userdata:
+    tutor_state: TutorState
+    agent_session: Optional[AgentSession] = None
+
+# -----------------------------
+# Tools
+# -----------------------------
+@function_tool
+async def select_topic(
+    ctx: RunContext[Userdata],
+    topic_id: Annotated[str, Field(description="topic id to select")]
+) -> str:
+    state = ctx.userdata.tutor_state
+    ok = state.set_topic(topic_id)
+    if ok:
+        return f"Topic set to {state.current_topic_data['title']}. Ask me to 'learn', 'quiz', or 'teach_back'."
+    avail = ", ".join([t["id"] for t in COURSE_CONTENT])
+    return f"Topic not found. Available topics: {avail}"
+
+@function_tool
+async def set_learning_mode(
+    ctx: RunContext[Userdata],
+    mode: Annotated[str, Field(description="learn | quiz | teach_back")]
+) -> str:
+    state = ctx.userdata.tutor_state
+    mode = mode.lower()
+    if mode not in ("learn", "quiz", "teach_back"):
+        return "Mode must be one of: learn, quiz, teach_back"
+    state.mode = mode
+
+    s = ""
+    session = ctx.userdata.agent_session
+    if session:
+        if mode == "learn":
+            session.tts.update_options(voice="en-US-matthew", style="Promo")
+            s = f"Mode LEARN. Ready to explain: {state.current_topic_data.get('title') if state.current_topic_data else 'no topic selected'}"
+        elif mode == "quiz":
+            session.tts.update_options(voice="en-US-alicia", style="Conversational")
+            s = "Mode QUIZ. I will ask a question to test your coding knowledge."
+        else:
+            session.tts.update_options(voice="en-US-ken", style="Promo")
+            s = "Mode TEACH_BACK. Ask the user to explain the code concept back to you."
+    else:
+        s = "Mode set locally. No active session for voice change."
+
+    return f"Switched to {mode} mode. {s}"
+
+@function_tool
+async def evaluate_teaching(
+    ctx: RunContext[Userdata],
+    user_explanation: Annotated[str, Field(description="user's teach-back explanation")]
+) -> str:
+    # Very simple scoring: overlap with summary keywords
+    topic = ctx.userdata.tutor_state.current_topic_data or {}
+    summary = topic.get("summary", "")
+    expected_words = set(w.strip('.,?!').lower() for w in summary.split())
+    answer_words = set(w.strip('.,?!').lower() for w in user_explanation.split())
+    if not expected_words:
+        return "No topic selected to evaluate."
+    overlap = expected_words & answer_words
+    score = int( (len(overlap) / max(1, len(expected_words))) * 10 )
+    if score >= 8:
+        feedback = "Excellent — you covered the technical definitions perfectly."
+    elif score >= 5:
+        feedback = "Good — you understood the core logic."
+    elif score >= 3:
+        feedback = "A start — try to use more specific programming terminology."
+    else:
+        feedback = "Needs work — try reviewing the concept definition again."
+    return f"Score: {score}/10. {feedback}"
+
+# -----------------------------
+# Agent
+# -----------------------------
+class CodingTutorAgent(Agent):
+    def __init__(self):
+        topic_list = ", ".join([f"{t['id']} ({t['title']})" for t in COURSE_CONTENT])
+        super().__init__(
+            instructions=f"""
+            You are a Coding and Programming Tutor for {COMPANY_NAME}.
+
+            AVAILABLE TOPICS: {topic_list}
+
+            MODES:
+              - LEARN (voice: Matthew): explain the coding concept simply and give one code example (describe the code verbally).
+              - QUIZ (voice: Alicia): ask the sample_question from content and wait for a short answer.
+              - TEACH_BACK (voice: Ken): ask the user to explain the concept back (like variables or loops) and provide corrective feedback.
+
+            BEHAVIOR:
+              - Start by asking which coding topic the user wants to study.
+              - Use the tools select_topic, set_learning_mode, evaluate_teaching to manage state and scoring.
+            """,
+            tools=[select_topic, set_learning_mode, evaluate_teaching],
+        )
+
+# -----------------------------
+# Entrypoint
+# -----------------------------
+
+def prewarm(proc: JobProcess):
+    proc.userdata["vad"] = silero.VAD.load()
+
 async def entrypoint(ctx: JobContext):
-    """
-    Wellness companion agent (Day 3).
-    - Uses last wellness_log.json entry to reference previous talk.
-    - Asks questions one by one: mood -> energy -> stress -> objectives -> recap.
-    """
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    participant = await ctx.wait_for_participant()
+    ctx.log_context_fields = {"room": ctx.room.name}
+    print(f"Starting {COMPANY_NAME} - Coding Tutor")
+    userdata = Userdata(tutor_state=TutorState())
 
-    tools = [log_checkin]
-
-    # Build system instructions: strongly enforce ONE-BY-ONE questions
-    prev_line = last_entry_summary_line()
-    if prev_line:
-        history_text = prev_line + " "
-    else:
-        history_text = "This seems to be the first check-in with this user. "
-
-    instructions = f"""
-{history_text}
-You are a supportive, grounded wellness companion.
-
-Your job:
-1. Ask about the user's mood with ONE clear question. Wait for the answer before asking anything else.
-2. Then ask about energy with ONE question. Wait for the answer.
-3. Then ask if there is anything stressing them or on their mind. One question. Wait for answer.
-4. Then ask about 1–3 simple objectives/goals for today. One question. Wait for answer.
-5. Offer exactly ONE small, realistic suggestion (for example: take a 5-minute walk, a short stretch, a small break, or break a task into smaller steps).
-6. Recap today's mood, energy, stress, and objectives in a short paragraph.
-7. Ask: "Does this sound right?" and wait for the answer.
-8. After the user confirms, call the tool 'log_checkin' with:
-   - mood
-   - energy
-   - objectives (comma separated)
-   - a short summary sentence.
-9. Avoid any medical, diagnostic, or treatment advice. You are not a doctor or therapist.
-
-VERY IMPORTANT:
-- Ask ONLY ONE question per message.
-- Do not combine multiple questions in the same reply.
-- Keep answers short, warm, and conversational.
-"""
-
-    # Create Agent with string instructions (no ChatContext)
-    agent = Agent(instructions=instructions, tools=tools)
-
-    # Build plugins
-    murf_key = os.environ.get("MURF_API_KEY")
-    tts_plugin = None
-    if MURF_AVAILABLE and murf_key:
-        try:
-            tts_plugin = murf.TTS(model="en-US-falcon", api_key=murf_key)
-        except Exception:
-            logger.exception("Failed to init Murf TTS; continuing without TTS")
-            tts_plugin = None
-    else:
-        if not MURF_AVAILABLE:
-            logger.warning("Murf plugin not available; TTS disabled.")
-        if not murf_key:
-            logger.warning("MURF_API_KEY not set; TTS disabled.")
-
-    vad_plugin = None
-    if SILERO_AVAILABLE:
-        try:
-            vad_plugin = silero.VAD.load()
-        except Exception:
-            logger.exception("silero.VAD.load failed; no VAD used.")
-            vad_plugin = None
-
-    stt_plugin = None
-    if DEEPGRAM_AVAILABLE:
-        try:
-            stt_plugin = deepgram.STT()
-        except Exception:
-            logger.exception("deepgram.STT init failed; no STT used.")
-            stt_plugin = None
-
-    llm_plugin = None
-    if GOOGLE_AVAILABLE:
-        try:
-            llm_plugin = google.LLM()
-        except Exception:
-            logger.exception("google.LLM init failed; no LLM used.")
-            llm_plugin = None
-
-    # Create session
     session = AgentSession(
-        vad=vad_plugin,
-        stt=stt_plugin,
-        llm=llm_plugin,
-        tts=tts_plugin,
+        stt=deepgram.STT(model="nova-3"),
+        llm=google.LLM(model="gemini-2.5-flash"),
+        tts=murf.TTS(voice="en-US-matthew", style="Promo", text_pacing=True),
+        turn_detection=MultilingualModel(),
+        vad=ctx.proc.userdata["vad"],
+        userdata=userdata,
     )
 
-    # Start agent session
-    try:
-        await session.start(agent=agent, room=ctx.room)
-    except TypeError:
-        session.start(agent=agent, room=ctx.room)
+    userdata.agent_session = session
 
-    # 1) If we have past data, say it explicitly first
-    if prev_line:
-        try:
-            await session.say(prev_line, allow_interruptions=True)
-        except Exception:
-            logger.exception("Failed to speak previous summary (non-fatal).")
+    await session.start(
+        agent=CodingTutorAgent(),
+        room=ctx.room,
+        room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVC()),
+    )
 
-    # 2) Then ask the FIRST question only: mood
-    # After this, the LLM will follow the instructions to ask questions one by one.
-    try:
-        await session.generate_reply(
-            instructions="Greet the user briefly and ask only one question: 'How are you feeling today?'"
-        )
-    except Exception:
-        try:
-            await session.say(
-                "Hi, I'm your wellness companion. How are you feeling today?",
-                allow_interruptions=True,
-            )
-        except Exception:
-            logger.exception("Failed to send greeting / first question.")
-
+    await ctx.connect()
 
 if __name__ == "__main__":
-    try:
-        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
-    except Exception:
-        logger.exception("Failed to run wellness agent")
-        raise
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))

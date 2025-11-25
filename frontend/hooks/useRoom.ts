@@ -7,10 +7,14 @@ export function useRoom(appConfig: AppConfig) {
   const aborted = useRef(false);
   const room = useMemo(() => new Room(), []);
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const selectedModeRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     function onDisconnected() {
       setIsSessionActive(false);
+      // clear mode on disconnect
+      sessionStorage.removeItem('tutor-mode');
+      selectedModeRef.current = undefined;
     }
 
     function onMediaDevicesError(error: Error) {
@@ -38,7 +42,7 @@ export function useRoom(appConfig: AppConfig) {
 
   const tokenSource = useMemo(
     () =>
-      TokenSource.custom(async () => {
+      TokenSource.custom(async (opts?: Record<string, unknown>) => {
         const url = new URL(
           process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? '/api/connection-details',
           window.location.origin
@@ -57,6 +61,8 @@ export function useRoom(appConfig: AppConfig) {
                     agents: [{ agent_name: appConfig.agentName }],
                   }
                 : undefined,
+              // include selected mode so backend can route or configure agent behavior
+              selected_mode: opts?.mode ?? selectedModeRef.current,
             }),
           });
           return await res.json();
@@ -68,8 +74,14 @@ export function useRoom(appConfig: AppConfig) {
     [appConfig]
   );
 
-  const startSession = useCallback(() => {
+  const startSession = useCallback((mode?: 'learning' | 'quiz' | 'teach-back') => {
     setIsSessionActive(true);
+
+    // store selected mode for token fetch and UI display
+    if (mode) {
+      selectedModeRef.current = mode;
+      sessionStorage.setItem('tutor-mode', mode);
+    }
 
     if (room.state === 'disconnected') {
       const { isPreConnectBufferEnabled } = appConfig;
@@ -78,7 +90,7 @@ export function useRoom(appConfig: AppConfig) {
           preConnectBuffer: isPreConnectBufferEnabled,
         }),
         tokenSource
-          .fetch({ agentName: appConfig.agentName })
+          .fetch({ agentName: appConfig.agentName, mode: selectedModeRef.current })
           .then((connectionDetails) =>
             room.connect(connectionDetails.serverUrl, connectionDetails.participantToken)
           ),

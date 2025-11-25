@@ -1,0 +1,12 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Background circle (dark mode) -->
+  <circle cx="100" cy="100" r="95" fill="#00E676" stroke="#00E676" stroke-width="2"/>
+  
+  <!-- PW text (dark mode) -->
+  <text x="100" y="130" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#051923" text-anchor="middle" letter-spacing="2">
+    PW
+  </text>
+  
+  <!-- Accent line -->
+  <line x1="40" y1="160" x2="160" y2="160" stroke="#051923" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+</svg>
