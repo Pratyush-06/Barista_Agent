@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" fill="#1a1a1a" rx="12"/>
+  <circle cx="100" cy="100" r="95" fill="#E23744"/>
+  <text x="100" y="125" font-size="72" font-weight="900" fill="white" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" letter-spacing="-2">zomato</text>
+</svg>

@@ -20,20 +20,20 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Physics Wallah',
-  pageTitle: 'Physics Wallah — Voice Tutor',
-  pageDescription: 'Practice aloud with an interactive voice tutor inspired by Physics Wallah',
+  companyName: 'Zomato',
+  pageTitle: 'Zomato — Voice SDR',
+  pageDescription: 'AI-powered sales development representative for restaurant leads and partnerships',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/pw-logo.svg',
-  accent: '#00C853',
-  logoDark: '/pw-logo-dark.svg',
-  accentDark: '#00E676',
-  startButtonText: 'Start Voice Tutor',
+  logo: '/zomato-logo.svg',
+  accent: '#E74C3C',
+  logoDark: '/zomato-logo-dark.svg',
+  accentDark: '#C0392B',
+  startButtonText: 'Start Sales Call',
 
   // for LiveKit Cloud Sandbox
   sandboxId: undefined,

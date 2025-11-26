@@ -99,18 +99,18 @@ export const SessionView = ({
   }, [messages]);
 
   return (
-    <section className="bg-gradient-to-b from-[#051923] via-[#062b20] to-[#071a12] relative z-10 h-full w-full overflow-hidden" {...props}>
+    <section className="bg-gradient-to-b from-[#1a1a2e] via-[#16213e] to-[#0f3460] relative z-10 h-full w-full overflow-hidden" {...props}>
       {/* Header with mode badge */}
       {mode && (
         <div className="absolute top-6 left-6 right-6 z-50 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/90">Physics Wallah — Voice Tutor</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-white/90">Zomato — Voice SDR</h2>
           <div className={cn(
             'px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider',
-            mode === 'learning' && 'bg-[#ffd600] text-black',
-            mode === 'quiz' && 'bg-[#00e676] text-black',
-            mode === 'teach-back' && 'bg-[#81d4fa] text-black'
+            mode === 'learning' && 'bg-[#E74C3C] text-white',
+            mode === 'quiz' && 'bg-[#F39C12] text-black',
+            mode === 'teach-back' && 'bg-[#27AE60] text-white'
           )}>
-            {mode === 'teach-back' ? 'Teach-Back' : mode.charAt(0).toUpperCase() + mode.slice(1)}
+            {mode === 'learning' ? 'Qualify' : mode === 'quiz' ? 'Demo' : 'Close'}
           </div>
         </div>
       )}
