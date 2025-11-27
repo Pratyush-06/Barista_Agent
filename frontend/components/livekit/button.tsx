@@ -15,21 +15,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-muted text-foreground hover:bg-muted focus:bg-muted hover:bg-foreground/10',
+        default: 'bg-blue-500/20 text-blue-100 border border-blue-500/50 hover:bg-blue-500/30 hover:border-yellow-400/60 focus:bg-blue-500/30',
         destructive: [
           'bg-destructive/10 text-destructive',
           'hover:bg-destructive/20 focus:bg-destructive/20 focus-visible:ring-destructive/20',
           'dark:focus-visible:ring-destructive/40',
         ],
         outline: [
-          'border border-input bg-background',
-          'hover:bg-accent hover:text-accent-foreground',
-          'dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
+          'border border-blue-500/50 bg-blue-900/20',
+          'hover:bg-blue-500/20 hover:text-yellow-300 hover:border-yellow-400',
+          'dark:bg-blue-900/30 dark:border-blue-500/50 dark:hover:bg-blue-500/30',
         ],
-        primary: 'bg-primary text-primary-foreground hover:bg-primary/70 focus:bg-primary/70',
-        secondary: 'bg-foreground/15 text-secondary-foreground hover:bg-foreground/20',
-        ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
-        link: 'text-primary underline-offset-4 hover:underline',
+        primary: 'bg-gradient-to-r from-yellow-300 to-yellow-400 text-blue-950 font-bold hover:shadow-lg hover:shadow-yellow-400/50 focus:shadow-lg focus:shadow-yellow-400/50',
+        secondary: 'bg-blue-500/20 text-yellow-300 border border-blue-500/30 hover:bg-blue-500/30 hover:border-yellow-400/60',
+        ghost: 'hover:bg-blue-500/20 hover:text-yellow-300 dark:hover:bg-blue-500/30',
+        link: 'text-yellow-300 underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',

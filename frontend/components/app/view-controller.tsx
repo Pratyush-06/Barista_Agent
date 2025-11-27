@@ -52,6 +52,7 @@ export function ViewController() {
           {...VIEW_MOTION_PROPS}
           startButtonText={appConfig.startButtonText}
           onStartCall={startSession}
+          className="w-full"
         />
       )}
       {/* Session view */}
@@ -61,6 +62,7 @@ export function ViewController() {
           {...VIEW_MOTION_PROPS}
           appConfig={appConfig}
           onAnimationComplete={handleAnimationComplete}
+          className="w-full h-svh"
         />
       )}
     </AnimatePresence>

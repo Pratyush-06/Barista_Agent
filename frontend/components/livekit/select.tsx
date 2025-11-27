@@ -33,14 +33,14 @@ function SelectTrigger({
         [
           'flex w-fit cursor-pointer items-center justify-between gap-2',
           'rounded-full px-3 py-2 text-sm whitespace-nowrap',
-          'bg-muted transition-[color,border,background-color]',
+          'bg-blue-500/20 border border-blue-500/30 text-blue-100 transition-[color,border,background-color]',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          'focus-visible:border-ring focus-visible:ring-ring/50 hover:bg-foreground/10 focus:bg-foreground/10 outline-none focus-visible:ring-[3px]',
+          'focus-visible:border-yellow-400/60 focus-visible:ring-yellow-400/20 hover:bg-blue-500/30 hover:border-yellow-400/60 focus:bg-blue-500/30 outline-none focus-visible:ring-[3px]',
           'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-          'data-[placeholder]:text-muted-foreground',
+          'data-[placeholder]:text-blue-300',
           'data-[size=default]:h-9 data-[size=sm]:h-8',
           '*:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2',
-          "[&:not([class*='text-'])_svg:not([class*='text-'])]:text-muted-foreground",
+          "[&:not([class*='text-'])_svg:not([class*='text-'])]:text-yellow-300",
           "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         ],
         className

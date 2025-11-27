@@ -10,9 +10,9 @@ const toggleVariants = cva(
     'inline-flex items-center justify-center gap-2 rounded-full',
     'text-sm font-medium whitespace-nowrap',
     'cursor-pointer outline-none transition-[color,box-shadow,background-color]',
-    'hover:bg-muted hover:text-muted-foreground',
+    'hover:bg-blue-500/30 hover:text-yellow-300',
     'disabled:pointer-events-none disabled:opacity-50',
-    'data-[state=on]:bg-accent data-[state=on]:text-accent-foreground',
+    'data-[state=on]:bg-gradient-to-r data-[state=on]:from-yellow-300 data-[state=on]:to-yellow-400 data-[state=on]:text-blue-950 data-[state=on]:font-bold',
     'focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:border-ring',
     'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive ',
     "[&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0",
@@ -20,13 +20,13 @@ const toggleVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-transparent',
+        default: 'bg-transparent text-blue-100',
         primary:
-          'bg-muted data-[state=on]:bg-muted hover:text-foreground text-destructive hover:text-foreground hover:bg-foreground/10 hover:data-[state=on]:bg-foreground/10',
+          'bg-blue-500/20 text-yellow-300 data-[state=on]:bg-gradient-to-r data-[state=on]:from-yellow-300 data-[state=on]:to-yellow-400 hover:text-yellow-200 hover:bg-blue-500/40',
         secondary:
-          'bg-muted data-[state=on]:bg-muted hover:text-foreground hover:bg-foreground/10 hover:data-[state=on]:bg-foreground/10 data-[state=on]:bg-blue-500/20 data-[state=on]:hover:bg-blue-500/30 data-[state=on]:text-blue-700 dark:data-[state=on]:text-blue-300',
+          'bg-blue-500/20 border border-blue-500/30 text-blue-100 data-[state=on]:bg-gradient-to-r data-[state=on]:from-yellow-300 data-[state=on]:to-yellow-400 data-[state=on]:text-blue-950 data-[state=on]:border-yellow-400 hover:bg-blue-500/30 hover:border-yellow-400/60',
         outline:
-          'border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground',
+          'border border-blue-500/30 bg-transparent text-blue-100 shadow-xs hover:bg-blue-500/20 hover:text-yellow-300 hover:border-yellow-400/60',
       },
       size: {
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',

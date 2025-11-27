@@ -20,20 +20,20 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Zomato',
-  pageTitle: 'Zomato — Voice SDR',
-  pageDescription: 'AI-powered sales development representative for restaurant leads and partnerships',
+  companyName: 'Slice Bank',
+  pageTitle: 'Slice Bank — Voice Fraud Detection',
+  pageDescription: 'AI-powered voice fraud detection and transaction verification for secure banking',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/zomato-logo.svg',
-  accent: '#E74C3C',
-  logoDark: '/zomato-logo-dark.svg',
-  accentDark: '#C0392B',
-  startButtonText: 'Start Sales Call',
+  logo: '/slice-logo.svg',
+  accent: '#FBBF24',
+  logoDark: '/slice-logo-dark.svg',
+  accentDark: '#F59E0B',
+  startButtonText: 'Verify Transaction',
 
   // for LiveKit Cloud Sandbox
   sandboxId: undefined,

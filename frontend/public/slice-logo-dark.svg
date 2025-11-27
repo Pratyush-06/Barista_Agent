@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120" role="img" aria-label="Slice logo dark">
+  <title>Slice (dark)</title>
+  <defs>
+    <style type="text/css"><![CDATA[
+      .word { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-weight: 800; font-size: 96px; }
+    ]]></style>
+  </defs>
+  <g fill="#FFFFFF">
+    <text class="word" x="0" y="88">slice</text>
+  </g>
+</svg>

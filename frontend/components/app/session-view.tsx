@@ -99,18 +99,18 @@ export const SessionView = ({
   }, [messages]);
 
   return (
-    <section className="bg-gradient-to-b from-[#1a1a2e] via-[#16213e] to-[#0f3460] relative z-10 h-full w-full overflow-hidden" {...props}>
+    <section className="bg-gradient-to-b from-blue-950 via-blue-900 to-slate-900 relative z-10 h-full w-full overflow-hidden" {...props}>
       {/* Header with mode badge */}
       {mode && (
         <div className="absolute top-6 left-6 right-6 z-50 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/90">Zomato — Voice SDR</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide bg-gradient-to-r from-yellow-300 to-yellow-200 bg-clip-text text-transparent">Slice Bank — Fraud Detection</h2>
           <div className={cn(
-            'px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider',
-            mode === 'learning' && 'bg-[#E74C3C] text-white',
-            mode === 'quiz' && 'bg-[#F39C12] text-black',
-            mode === 'teach-back' && 'bg-[#27AE60] text-white'
+            'px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider shadow-lg',
+            mode === 'learning' && 'bg-gradient-to-r from-yellow-300 to-yellow-400 text-blue-950',
+            mode === 'quiz' && 'bg-gradient-to-r from-blue-400 to-blue-500 text-white',
+            mode === 'teach-back' && 'bg-gradient-to-r from-emerald-400 to-emerald-500 text-white'
           )}>
-            {mode === 'learning' ? 'Qualify' : mode === 'quiz' ? 'Demo' : 'Close'}
+            {mode === 'learning' ? 'Verify' : mode === 'quiz' ? 'Detect' : 'Secure'}
           </div>
         </div>
       )}
