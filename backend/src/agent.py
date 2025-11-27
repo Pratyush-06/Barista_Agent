@@ -1,160 +1,277 @@
-import os
-import json
-import logging
-from typing import Annotated, Optional, Dict
-from difflib import SequenceMatcher
-from dataclasses import dataclass
+"""
+Day 6 – Fraud Alert Voice Agent (MongoDB version, Slice Bank)
 
-from dotenv import load_dotenv
+Agent Name: Akash
+Bank Name: Slice Bank
 
-from livekit.agents import (
-    AutoSubscribe,
-    JobContext,
-    Agent,
-    AgentSession,
-    WorkerOptions,
-    cli,
-    function_tool
-)
-
-from livekit.plugins import google, deepgram, murf, silero
-
-load_dotenv()
-logger = logging.getLogger("zomato-sdr")
-
-BASE = os.path.dirname(__file__)
-ROOT = os.path.normpath(os.path.join(BASE, "..", ".."))
-CONTENT_FILE = os.path.join(ROOT, "shared-data", "day5_company_content.json")
-LEADS_FILE = os.path.join(BASE, "..", "day5_zomato_leads.json")
-
-
-# ------------------------------------------------------
-# Load Company Data
-# ------------------------------------------------------
-def load_company():
-    if not os.path.exists(CONTENT_FILE):
-        raise FileNotFoundError("Zomato SDR content missing.")
-    with open(CONTENT_FILE, "r") as f:
-        return json.load(f)
-
-
-COMPANY = load_company()
-
-
-# ------------------------------------------------------
-# Lead State
-# ------------------------------------------------------
-@dataclass
-class LeadState:
-    data: Dict[str, Optional[str]]
-
-    def __init__(self):
-        self.data = {field: None for field in COMPANY["lead_fields"]}
-
-    def set(self, key, val):
-        if key in self.data:
-            self.data[key] = val
-
-    def missing_fields(self):
-        return [k for k, v in self.data.items() if not v]
-
-    def is_complete(self):
-        return all(self.data.values())
-
-    def summary(self):
-        return "; ".join([f"{k}: {v}" for k, v in self.data.items()])
-
-
-# ------------------------------------------------------
-# FAQ Answer Retrieval
-# ------------------------------------------------------
-def find_faq_answer(q: str) -> Optional[str]:
-    q = q.lower()
-    best = None
-    best_ratio = 0.0
-
-    for item in COMPANY["faq"]:
-        ratio = SequenceMatcher(None, q, item["q"].lower()).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best = item["a"]
-
-    return best if best_ratio >= 0.35 else None
-
-
-# ------------------------------------------------------
-# Tool: Save Lead
-# ------------------------------------------------------
-@function_tool
-async def save_lead(
-    lead_data: Annotated[dict, "Lead data to save"]
-) -> str:
-    """Save final lead to JSON file."""
-    existing = []
-    if os.path.exists(LEADS_FILE):
-        try:
-            with open(LEADS_FILE, "r", encoding="utf-8") as f:
-                existing = json.load(f)
-        except Exception:
-            existing = []
-
-    existing.append(lead_data)
-
-    with open(LEADS_FILE, "w", encoding="utf-8") as f:
-        json.dump(existing, f, indent=2, ensure_ascii=False)
-
-    return "Saved lead successfully."
-
-
-# ------------------------------------------------------
-# SDR Instructions
-# ------------------------------------------------------
-INSTRUCTIONS = f"""
-You are a Sales Development Representative for {COMPANY["company"]}.
-
-Your job:
-1. Greet the user warmly.
-2. Ask what they are looking for.
-3. Use FAQ to answer questions about {COMPANY["company"]}. DO NOT invent anything outside the FAQ.
-4. Ask for lead details one by one (only one question at a time):
-   {", ".join(COMPANY["lead_fields"])}
-5. Understand signals like: “that's all”, “done”, “nothing else”, “thanks”.
-6. When user is done:
-   - Give a short verbal summary of all collected lead details.
-   - Call save_lead to store the JSON.
-7. Keep replies friendly, short, and clear.
+Flow:
+  1. Introduce as Akash from Slice Bank Fraud Prevention Team
+  2. Ask for FULL NAME
+  3. Ask for SECURITY IDENTIFIER
+  4. If verified, read suspicious transaction from MongoDB
+  5. Ask if transaction is legitimate (yes/no)
+  6. Update MongoDB status: confirmed_safe / confirmed_fraud / verification_failed
 """
 
+import logging
+import os
+from dataclasses import dataclass
+from typing import Optional, Annotated
 
-# ------------------------------------------------------
+from dotenv import load_dotenv
+from pydantic import Field
+from pymongo import MongoClient
+
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    JobProcess,
+    RoomInputOptions,
+    WorkerOptions,
+    cli,
+    function_tool,
+    RunContext,
+)
+
+from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
+logger = logging.getLogger("slice_fraud_agent")
+load_dotenv(".env.local")
+
+BANK_NAME = "Slice Bank"
+AGENT_NAME = "Akash"
+
+# -----------------------------
+# MongoDB connection helpers
+# -----------------------------
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017")
+DB_NAME = os.environ.get("MONGO_DB", "fraud_demo")
+COLLECTION_NAME = os.environ.get("MONGO_COLLECTION", "fraud_cases")
+
+
+def get_collection():
+    client = MongoClient(MONGO_URI)
+    db = client[DB_NAME]
+    return db[COLLECTION_NAME]
+
+
+# -----------------------------
+# Create sample case (if missing)
+# -----------------------------
+def init_mongo_demo_case():
+    col = get_collection()
+
+    if col.find_one({"id": "case_001"}):
+        return
+
+    demo_case = {
+        "id": "case_001",
+        "userName": "Rahul Sharma",
+        "securityIdentifier": "PW-78351",
+        "cardEnding": "7742",
+        "amount": "₹6,299",
+        "merchant": "UrbanTech Gadgets",
+        "timestamp": "2025-11-23 11:45",
+        "location": "Mumbai (online)",
+        "category": "electronics",
+        "source": "urbantech.in",
+        "status": "pending_review",
+        "notes": "",
+    }
+
+    col.insert_one(demo_case)
+    print(f"[Mongo] Inserted demo fraud case into {DB_NAME}.{COLLECTION_NAME}")
+
+
+def load_case(case_id="case_001"):
+    col = get_collection()
+    return col.find_one({"id": case_id}, {"_id": 0})
+
+
+def update_case_status(case_id, status, note):
+    col = get_collection()
+    col.update_one({"id": case_id}, {"$set": {"status": status, "notes": note}})
+    logger.info("[Mongo] Updated case %s -> %s (%s)", case_id, status, note)
+
+
+# -----------------------------
+# Runtime State
+# -----------------------------
+@dataclass
+class FraudState:
+    case_id: str
+    current_case: dict
+    verified: bool = False
+
+
+@dataclass
+class Userdata:
+    fraud_state: FraudState
+    agent_session: Optional[AgentSession] = None
+
+
+# -----------------------------
+# Tool: mark_fraud_case
+# -----------------------------
+@function_tool
+async def mark_fraud_case(
+    ctx: RunContext[Userdata],
+    status: Annotated[str, Field(description="confirmed_safe | confirmed_fraud | verification_failed")],
+    note: Annotated[str, Field(description="Outcome summary note")],
+):
+    state = ctx.userdata.fraud_state
+    status = status.lower().strip()
+
+    if status not in ("confirmed_safe", "confirmed_fraud", "verification_failed"):
+        return "Invalid status."
+
+    update_case_status(state.case_id, status, note.strip())
+
+    if status == "confirmed_safe":
+        return "Case updated as safe."
+    elif status == "confirmed_fraud":
+        return "Case updated as fraud."
+    return "Verification failed recorded."
+
+
+# -----------------------------
+# Agent Definition
+# -----------------------------
+class FraudAlertAgent(Agent):
+    def __init__(self, case):
+        user_name = case.get("userName", "")
+        sec_id = case.get("securityIdentifier", "")
+        card_ending = case.get("cardEnding", "XXXX")
+        amount = case.get("amount", "")
+        merchant = case.get("merchant", "")
+        tx_time = case.get("timestamp", "")
+        tx_loc = case.get("location", "")
+        category = case.get("category", "")
+        source = case.get("source", "")
+
+        instructions = f"""
+You are {AGENT_NAME}, a calm and professional Fraud Prevention Officer from {BANK_NAME}.
+
+You MUST follow this call flow strictly:
+
+------------------------------------------------------------
+1. INTRODUCTION
+------------------------------------------------------------
+- Start the call with:
+  "Hello, this is {AGENT_NAME} calling from the Fraud Prevention Team at {BANK_NAME}."
+- Explain:
+  "We're reaching out regarding a suspicious transaction on your card ending with {card_ending}."
+
+------------------------------------------------------------
+2. IDENTITY VERIFICATION (TWO STEPS)
+------------------------------------------------------------
+
+STEP 1 — FULL NAME:
+- Say: "For verification, may I know your full name as per your account?"
+- Expected name: "{user_name}" (INTERNAL ONLY – DO NOT speak this)
+- Accept minor variations like spelling mistakes or missing last name.
+- If mismatch continues → politely stop the call:
+  - Call tool mark_fraud_case with:
+      status="verification_failed"
+      note="Name verification failed; call ended."
+
+STEP 2 — SECURITY IDENTIFIER:
+- Say: "Thank you. Could you please confirm your security identifier?"
+- Expected: "{sec_id}" (INTERNAL ONLY – DO NOT speak this)
+- Accept minor pauses or hyphens.
+- If mismatch → verification_failed via tool.
+
+------------------------------------------------------------
+3. FRAUD EXPLANATION (IF VERIFIED)
+------------------------------------------------------------
+- Summarize the suspicious transaction:
+  - Amount: {amount}
+  - Merchant: {merchant}
+  - Category: {category}
+  - Location: {tx_loc}
+  - Time: {tx_time}
+  - Source: {source}
+- Ask:
+  "Did you make this transaction?"
+
+------------------------------------------------------------
+4. DECISION LOGIC
+------------------------------------------------------------
+
+IF user says YES (legitimate):
+- Reassure them.
+- Call mark_fraud_case:
+    status="confirmed_safe"
+    note="Customer confirmed the transaction as legitimate."
+
+IF user says NO (fraud):
+- Calmly say you will block the card and begin a dispute (demo).
+- Call mark_fraud_case:
+    status="confirmed_fraud"
+    note="Customer denied transaction; card blocked (demo)."
+
+------------------------------------------------------------
+5. SAFETY RULES
+------------------------------------------------------------
+NEVER ask for:
+- Full card number
+- PIN
+- OTP
+- Password
+- Net banking details
+
+------------------------------------------------------------
+6. END
+------------------------------------------------------------
+- Give a final short summary.
+- Say goodbye politely.
+"""
+
+        super().__init__(instructions=instructions, tools=[mark_fraud_case])
+
+
+# -----------------------------
+# Prewarm
+# -----------------------------
+def prewarm(proc: JobProcess):
+    proc.userdata["vad"] = silero.VAD.load()
+    init_mongo_demo_case()
+
+
+# -----------------------------
 # Entrypoint
-# ------------------------------------------------------
+# -----------------------------
 async def entrypoint(ctx: JobContext):
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    participant = await ctx.wait_for_participant()
+    print(f"Starting Slice Bank - Fraud Alert Voice Agent (Agent: {AGENT_NAME})")
 
-    lead = LeadState()
+    init_mongo_demo_case()
+    case = load_case("case_001")
 
-    agent = Agent(
-        instructions=INSTRUCTIONS,
-        tools=[save_lead]
-    )
+    fraud_state = FraudState(case_id=case["id"], current_case=case)
+    userdata = Userdata(fraud_state=fraud_state)
 
     session = AgentSession(
-        stt=deepgram.STT(),
-        llm=google.LLM(),
-        tts=murf.TTS(model="en-US-falcon", api_key=os.getenv("MURF_API_KEY")),
-        vad=silero.VAD.load(),
-        userdata={"lead": lead},
+        stt=deepgram.STT(model="nova-3"),
+        llm=google.LLM(model="gemini-2.5-flash"),
+        tts=murf.TTS(voice="en-US-matthew", style="Promo", text_pacing=True),
+        turn_detection=MultilingualModel(),
+        vad=ctx.proc.userdata["vad"],
+        userdata=userdata,
     )
 
-    await session.start(agent=agent, room=ctx.room)
+    userdata.agent_session = session
 
-    await session.say(
-        f"Hi! I'm the SDR from {COMPANY['company']}. How can I help you today?",
-        allow_interruptions=True
+    await session.start(
+        agent=FraudAlertAgent(case),
+        room=ctx.room,
+        room_input_options=RoomInputOptions(
+            noise_cancellation=noise_cancellation.BVC()
+        ),
     )
+    await ctx.connect()
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
