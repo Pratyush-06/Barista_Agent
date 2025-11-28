@@ -20,20 +20,20 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Slice Bank',
-  pageTitle: 'Slice Bank — Voice Fraud Detection',
-  pageDescription: 'AI-powered voice fraud detection and transaction verification for secure banking',
+  companyName: 'Zepto',
+  pageTitle: 'Zepto — Smart Order Voice Assistant',
+  pageDescription: 'Fast 10-minute delivery with voice-activated order management powered by AI',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/slice-logo.svg',
-  accent: '#FBBF24',
-  logoDark: '/slice-logo-dark.svg',
-  accentDark: '#F59E0B',
-  startButtonText: 'Verify Transaction',
+  logo: '/zepto-logo.svg',
+  accent: '#00A699',
+  logoDark: '/zepto-logo-dark.svg',
+  accentDark: '#00D9C4',
+  startButtonText: 'Place Order',
 
   // for LiveKit Cloud Sandbox
   sandboxId: undefined,

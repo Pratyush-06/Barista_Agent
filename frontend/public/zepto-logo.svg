@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <!-- Define gradients -->
+  <defs>
+    <linearGradient id="zeptoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00A699;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00D9C4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Z Icon -->
+  <rect x="5" y="5" width="50" height="50" rx="8" fill="url(#zeptoGrad)" />
+  <text x="32" y="45" font-size="40" font-weight="900" fill="white" text-anchor="middle" font-family="Arial, sans-serif">Z</text>
+  
+  <!-- ZEPTO Text -->
+  <text x="70" y="45" font-size="32" font-weight="900" fill="#00A699" font-family="Arial, sans-serif">ZEPTO</text>
+</svg>

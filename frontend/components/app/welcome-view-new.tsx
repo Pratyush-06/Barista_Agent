@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ShoppingBag, Mic, Clock, Sparkles, Truck, Users } from 'lucide-react';
+import { Button } from '@/components/livekit/button';
 
 interface WelcomeViewProps {
   startButtonText: string;
@@ -133,12 +134,24 @@ export const WelcomeView = ({ startButtonText, onStartCall, ref }: React.Compone
       {/* Stats Section */}
       <section className="py-20 px-4 md:px-6 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8 }} className="text-center mb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
             <h2 className="text-4xl md:text-5xl font-black mb-4 text-gray-900">Why Zepto?</h2>
             <p className="text-lg text-gray-600">Everything you need for instant grocery delivery</p>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.8, staggerChildren: 0.1 }} className="grid md:grid-cols-3 gap-8">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8, staggerChildren: 0.1 }}
+            className="grid md:grid-cols-3 gap-8"
+          >
             {[
               {
                 icon: Truck,
@@ -153,12 +166,19 @@ export const WelcomeView = ({ startButtonText, onStartCall, ref }: React.Compone
               {
                 icon: Users,
                 title: 'Trusted by Millions',
-                desc: "India's fastest growing grocery platform.",
+                desc: 'India\'s fastest growing grocery platform.',
               },
             ].map((stat, i) => {
               const Icon = stat.icon;
               return (
-                <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.2 }} className="p-8 rounded-2xl bg-white border border-gray-200 hover:border-teal-300 hover:shadow-xl transition-all">
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.2 }}
+                  className="p-8 rounded-2xl bg-white border border-gray-200 hover:border-teal-300 hover:shadow-xl transition-all"
+                >
                   <div className="w-14 h-14 rounded-full bg-teal-100 flex items-center justify-center mb-4">
                     <Icon className="w-7 h-7 text-teal-600" />
                   </div>
@@ -174,20 +194,41 @@ export const WelcomeView = ({ startButtonText, onStartCall, ref }: React.Compone
       {/* How It Works */}
       <section className="py-20 px-4 md:px-6 bg-white">
         <div className="max-w-6xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
             <h2 className="text-4xl md:text-5xl font-black mb-4 text-gray-900">How It Works</h2>
             <p className="text-lg text-gray-600">Four simple steps to your doorstep</p>
           </motion.div>
 
           <div className="grid md:grid-cols-4 gap-6">
-            {[{ step: '1', title: 'Speak', desc: 'Tell Zepto what you need' }, { step: '2', title: 'Select', desc: 'AI shows best options' }, { step: '3', title: 'Order', desc: 'Voice confirms purchase' }, { step: '4', title: 'Receive', desc: 'Delivery in 10 mins' }].map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }} className="relative">
+            {[
+              { step: '1', title: 'Speak', desc: 'Tell Zepto what you need' },
+              { step: '2', title: 'Select', desc: 'AI shows best options' },
+              { step: '3', title: 'Order', desc: 'Voice confirms purchase' },
+              { step: '4', title: 'Receive', desc: 'Delivery in 10 mins' },
+            ].map((item, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.15 }}
+                className="relative"
+              >
                 <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center mx-auto mb-4 text-2xl font-black text-white">{item.step}</div>
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center mx-auto mb-4 text-2xl font-black text-white">
+                    {item.step}
+                  </div>
                   <h3 className="text-lg font-bold text-gray-900 mb-2">{item.title}</h3>
                   <p className="text-sm text-gray-600">{item.desc}</p>
                 </div>
-                {i < 3 && <div className="hidden md:block absolute top-8 -right-3 w-6 h-1 bg-gradient-to-r from-teal-500 to-transparent" />}
+                {i < 3 && (
+                  <div className="hidden md:block absolute top-8 -right-3 w-6 h-1 bg-gradient-to-r from-teal-500 to-transparent" />
+                )}
               </motion.div>
             ))}
           </div>
@@ -197,10 +238,17 @@ export const WelcomeView = ({ startButtonText, onStartCall, ref }: React.Compone
       {/* CTA Section */}
       <section className="py-20 px-4 md:px-6 bg-gradient-to-r from-teal-600 to-emerald-600">
         <div className="max-w-2xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
             <h2 className="text-4xl font-black mb-4 text-white">Ready to Order?</h2>
             <p className="text-lg text-white/90 mb-8">Start speaking to your personal shopping assistant now</p>
-            <button onClick={handleStart} className="px-8 py-4 rounded-xl bg-white text-teal-600 font-bold text-lg hover:shadow-2xl transition-all flex items-center gap-2 mx-auto">
+            <button
+              onClick={handleStart}
+              className="px-8 py-4 rounded-xl bg-white text-teal-600 font-bold text-lg hover:shadow-2xl transition-all flex items-center gap-2 mx-auto"
+            >
               <Mic className="w-5 h-5" />
               Start Voice Ordering
             </button>
@@ -212,7 +260,10 @@ export const WelcomeView = ({ startButtonText, onStartCall, ref }: React.Compone
       <footer className="py-12 px-4 md:px-6 bg-gray-900 text-white">
         <div className="max-w-6xl mx-auto text-center">
           <p className="text-gray-400 text-sm mb-2">© 2025 Zepto — Smart Order Voice Assistant</p>
-          <p className="text-gray-500 text-xs">Powered by <span className="text-teal-400 font-semibold">Voice AI</span> • Fast <span className="text-teal-400 font-semibold">10-min Delivery</span></p>
+          <p className="text-gray-500 text-xs">
+            Powered by <span className="text-teal-400 font-semibold">Voice AI</span> • Fast
+            <span className="text-teal-400 font-semibold">10-min Delivery</span>
+          </p>
         </div>
       </footer>
     </div>

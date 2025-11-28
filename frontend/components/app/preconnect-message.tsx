@@ -45,8 +45,8 @@ export function PreConnectMessage({ className, messages = [] }: PreConnectMessag
           aria-hidden={messages.length > 0}
           className={cn('pointer-events-none text-center', className)}
         >
-          <ShimmerText className="text-sm font-semibold text-yellow-300">
-            Slice Security Agent is ready — verify your transaction
+          <ShimmerText className="text-sm font-semibold text-orange-300">
+            Zepto Voice Assistant ready — start ordering your groceries
           </ShimmerText>
         </MotionMessage>
       )}
