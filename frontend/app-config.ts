@@ -1,41 +1,26 @@
-export interface AppConfig {
-  pageTitle: string;
-  pageDescription: string;
-  companyName: string;
-
-  supportsChatInput: boolean;
-  supportsVideoInput: boolean;
-  supportsScreenShare: boolean;
-  isPreConnectBufferEnabled: boolean;
-
-  logo: string;
-  startButtonText: string;
-  accent?: string;
-  logoDark?: string;
-  accentDark?: string;
-
-  // for LiveKit Cloud Sandbox
-  sandboxId?: string;
-  agentName?: string;
-}
-
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Zepto',
-  pageTitle: 'Zepto — Smart Order Voice Assistant',
-  pageDescription: 'Fast 10-minute delivery with voice-activated order management powered by AI',
+  companyName: 'Solo Leveling Dungeon',
+  pageTitle: 'Solo Leveling — Dungeon Run Voice Game',
+  pageDescription:
+    'Enter the Gate as a low-rank Hunter. A Solo Leveling–inspired voice Game Master narrates your fate, tracks HP & inventory, and rolls the dice on every action.',
 
   supportsChatInput: true,
   supportsVideoInput: true,
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
+  // you can keep these logos if you don’t have your own yet
   logo: '/zepto-logo.svg',
-  accent: '#00A699',
   logoDark: '/zepto-logo-dark.svg',
-  accentDark: '#00D9C4',
-  startButtonText: 'Place Order',
 
-  // for LiveKit Cloud Sandbox
+  // dungeon-ish cyan accent
+  accent: '#22D3EE',
+  accentDark: '#06B6D4',
+
+  // this text will appear on the main button
+  startButtonText: 'Enter the Gate',
+
+  // LiveKit Cloud sandbox config (leave as-is unless you set these)
   sandboxId: undefined,
   agentName: undefined,
 };

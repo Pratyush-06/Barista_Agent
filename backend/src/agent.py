@@ -1,26 +1,23 @@
 """
-Day 6 – Fraud Alert Voice Agent (MongoDB version, Slice Bank)
+Day 8 – Solo Leveling Inspired Voice Game Master (Short Demo Version)
 
-Agent Name: Akash
-Bank Name: Slice Bank
+Theme:
+- Modern world with Gates & Dungeons (Solo Leveling style).
+- You are a low-rank Hunter entering a dangerous dungeon.
+- A mysterious "System" tracks your HP and Inventory and evaluates your actions.
 
-Flow:
-  1. Introduce as Akash from Slice Bank Fraud Prevention Team
-  2. Ask for FULL NAME
-  3. Ask for SECURITY IDENTIFIER
-  4. If verified, read suspicious transaction from MongoDB
-  5. Ask if transaction is legitimate (yes/no)
-  6. Update MongoDB status: confirmed_safe / confirmed_fraud / verification_failed
+Designed as a SHORT DEMO (4–6 turns) for LinkedIn video:
+- Shows storytelling + dice checks + HP change + optional loot.
 """
 
 import logging
 import os
-from dataclasses import dataclass
-from typing import Optional, Annotated
+import random
+from dataclasses import dataclass, field
+from typing import List, Optional, Annotated
 
 from dotenv import load_dotenv
 from pydantic import Field
-from pymongo import MongoClient
 
 from livekit.agents import (
     Agent,
@@ -37,225 +34,298 @@ from livekit.agents import (
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-logger = logging.getLogger("slice_fraud_agent")
+logger = logging.getLogger("day8_solo_gm")
+logging.basicConfig(level=logging.INFO)
 load_dotenv(".env.local")
 
-BANK_NAME = "Slice Bank"
-AGENT_NAME = "Akash"
 
-# -----------------------------
-# MongoDB connection helpers
-# -----------------------------
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://127.0.0.1:27017")
-DB_NAME = os.environ.get("MONGO_DB", "fraud_demo")
-COLLECTION_NAME = os.environ.get("MONGO_COLLECTION", "fraud_cases")
-
-
-def get_collection():
-    client = MongoClient(MONGO_URI)
-    db = client[DB_NAME]
-    return db[COLLECTION_NAME]
-
-
-# -----------------------------
-# Create sample case (if missing)
-# -----------------------------
-def init_mongo_demo_case():
-    col = get_collection()
-
-    if col.find_one({"id": "case_001"}):
-        return
-
-    demo_case = {
-        "id": "case_001",
-        "userName": "Rahul Sharma",
-        "securityIdentifier": "PW-78351",
-        "cardEnding": "7742",
-        "amount": "₹6,299",
-        "merchant": "UrbanTech Gadgets",
-        "timestamp": "2025-11-23 11:45",
-        "location": "Mumbai (online)",
-        "category": "electronics",
-        "source": "urbantech.in",
-        "status": "pending_review",
-        "notes": "",
-    }
-
-    col.insert_one(demo_case)
-    print(f"[Mongo] Inserted demo fraud case into {DB_NAME}.{COLLECTION_NAME}")
-
-
-def load_case(case_id="case_001"):
-    col = get_collection()
-    return col.find_one({"id": case_id}, {"_id": 0})
-
-
-def update_case_status(case_id, status, note):
-    col = get_collection()
-    col.update_one({"id": case_id}, {"$set": {"status": status, "notes": note}})
-    logger.info("[Mongo] Updated case %s -> %s (%s)", case_id, status, note)
-
-
-# -----------------------------
-# Runtime State
-# -----------------------------
+# ---------------------------------------------------------
+# Player / Game State
+# ---------------------------------------------------------
 @dataclass
-class FraudState:
-    case_id: str
-    current_case: dict
-    verified: bool = False
+class PlayerState:
+    name: Optional[str] = None
+    max_hp: int = 20
+    hp: int = 20
+    inventory: List[str] = field(default_factory=list)
+
+
+@dataclass
+class GameState:
+    player: PlayerState
+    location: str = "Standing at the entrance of a low-rank Gate."
+    last_roll: Optional[dict] = None  # {"roll": int, "difficulty": str, "outcome": str, "action": str}
 
 
 @dataclass
 class Userdata:
-    fraud_state: FraudState
+    game: GameState
     agent_session: Optional[AgentSession] = None
 
 
-# -----------------------------
-# Tool: mark_fraud_case
-# -----------------------------
+# ---------------------------------------------------------
+# Tools – used by the LLM as the "System"
+# ---------------------------------------------------------
 @function_tool
-async def mark_fraud_case(
+async def roll_check(
     ctx: RunContext[Userdata],
-    status: Annotated[str, Field(description="confirmed_safe | confirmed_fraud | verification_failed")],
-    note: Annotated[str, Field(description="Outcome summary note")],
-):
-    state = ctx.userdata.fraud_state
-    status = status.lower().strip()
+    action: Annotated[str, Field(
+        description="Short description of what the Hunter is attempting, "
+                    "e.g. 'slash the goblin', 'dodge the attack', 'sneak past the sentry'"
+    )],
+    difficulty: Annotated[str, Field(description="One of: 'easy', 'normal', 'hard'")],
+) -> str:
+    """
+    Perform a d20 roll for a risky action.
+    Interpreted as a 'System Check' in the Solo Leveling–style narrative.
+    """
+    diff = difficulty.lower().strip()
+    if diff not in ("easy", "normal", "hard"):
+        diff = "normal"
 
-    if status not in ("confirmed_safe", "confirmed_fraud", "verification_failed"):
-        return "Invalid status."
+    roll = random.randint(1, 20)
 
-    update_case_status(state.case_id, status, note.strip())
+    # thresholds
+    if diff == "easy":
+        if roll >= 10:
+            outcome = "success"
+        elif roll >= 5:
+            outcome = "partial"
+        else:
+            outcome = "fail"
+    elif diff == "hard":
+        if roll >= 16:
+            outcome = "success"
+        elif roll >= 10:
+            outcome = "partial"
+        else:
+            outcome = "fail"
+    else:  # normal
+        if roll >= 13:
+            outcome = "success"
+        elif roll >= 8:
+            outcome = "partial"
+        else:
+            outcome = "fail"
 
-    if status == "confirmed_safe":
-        return "Case updated as safe."
-    elif status == "confirmed_fraud":
-        return "Case updated as fraud."
-    return "Verification failed recorded."
+    ctx.userdata.game.last_roll = {
+        "roll": roll,
+        "difficulty": diff,
+        "outcome": outcome,
+        "action": action,
+    }
+
+    return (
+        f"System Check for action '{action}': d20 = {roll}, "
+        f"difficulty = {diff}, outcome = {outcome}. "
+        "Describe this as a Solo Leveling–style result: clean success, close call, or painful failure."
+    )
 
 
-# -----------------------------
-# Agent Definition
-# -----------------------------
-class FraudAlertAgent(Agent):
-    def __init__(self, case):
-        user_name = case.get("userName", "")
-        sec_id = case.get("securityIdentifier", "")
-        card_ending = case.get("cardEnding", "XXXX")
-        amount = case.get("amount", "")
-        merchant = case.get("merchant", "")
-        tx_time = case.get("timestamp", "")
-        tx_loc = case.get("location", "")
-        category = case.get("category", "")
-        source = case.get("source", "")
+@function_tool
+async def modify_hp(
+    ctx: RunContext[Userdata],
+    amount: Annotated[int, Field(
+        description="Positive to heal, negative for damage, e.g. -5 for damage, +3 for healing"
+    )],
+    reason: Annotated[str, Field(
+        description="Short explanation like 'goblin slash', 'healing potion', 'trap explosion'"
+    )],
+) -> str:
+    """
+    Modify the Hunter's HP (damage or heal). Keeps HP between 0 and max_hp.
+    """
+    player = ctx.userdata.game.player
 
-        instructions = f"""
-You are {AGENT_NAME}, a calm and professional Fraud Prevention Officer from {BANK_NAME}.
+    old_hp = player.hp
+    player.hp += amount
+    if player.hp > player.max_hp:
+        player.hp = player.max_hp
+    if player.hp < 0:
+        player.hp = 0
 
-You MUST follow this call flow strictly:
+    if amount < 0:
+        change_text = f"took {-amount} damage"
+    elif amount > 0:
+        change_text = f"recovered {amount} HP"
+    else:
+        change_text = "had no HP change"
 
-------------------------------------------------------------
-1. INTRODUCTION
-------------------------------------------------------------
-- Start the call with:
-  "Hello, this is {AGENT_NAME} calling from the Fraud Prevention Team at {BANK_NAME}."
-- Explain:
-  "We're reaching out regarding a suspicious transaction on your card ending with {card_ending}."
+    status = "alive"
+    if player.hp == 0:
+        status = "down"
 
-------------------------------------------------------------
-2. IDENTITY VERIFICATION (TWO STEPS)
-------------------------------------------------------------
+    return (
+        f"Hunter {change_text} due to: {reason}. "
+        f"HP changed from {old_hp} to {player.hp} (max {player.max_hp}). "
+        f"Hunter status: {status}. "
+        "Narrate this like a System notification and describe how it looks/feels in the scene."
+    )
 
-STEP 1 — FULL NAME:
-- Say: "For verification, may I know your full name as per your account?"
-- Expected name: "{user_name}" (INTERNAL ONLY – DO NOT speak this)
-- Accept minor variations like spelling mistakes or missing last name.
-- If mismatch continues → politely stop the call:
-  - Call tool mark_fraud_case with:
-      status="verification_failed"
-      note="Name verification failed; call ended."
 
-STEP 2 — SECURITY IDENTIFIER:
-- Say: "Thank you. Could you please confirm your security identifier?"
-- Expected: "{sec_id}" (INTERNAL ONLY – DO NOT speak this)
-- Accept minor pauses or hyphens.
-- If mismatch → verification_failed via tool.
+@function_tool
+async def add_item(
+    ctx: RunContext[Userdata],
+    item_name: Annotated[str, Field(
+        description="Name of the item to add to inventory, e.g. 'rusty dagger', 'healing potion', 'shadow crystal'"
+    )],
+) -> str:
+    """
+    Add a new item to the Hunter's inventory.
+    """
+    player = ctx.userdata.game.player
+    item = item_name.strip()
+    if item and item not in player.inventory:
+        player.inventory.append(item)
+        return f"Added '{item}' to the Hunter's inventory. Current inventory: {player.inventory}."
+    return f"Item '{item}' is already in inventory or invalid. Current inventory: {player.inventory}."
 
-------------------------------------------------------------
-3. FRAUD EXPLANATION (IF VERIFIED)
-------------------------------------------------------------
-- Summarize the suspicious transaction:
-  - Amount: {amount}
-  - Merchant: {merchant}
-  - Category: {category}
-  - Location: {tx_loc}
-  - Time: {tx_time}
-  - Source: {source}
-- Ask:
-  "Did you make this transaction?"
 
-------------------------------------------------------------
-4. DECISION LOGIC
-------------------------------------------------------------
+@function_tool
+async def remove_item(
+    ctx: RunContext[Userdata],
+    item_name: Annotated[str, Field(description="Name of the item to remove from inventory")],
+) -> str:
+    """
+    Remove an item from the Hunter's inventory.
+    """
+    player = ctx.userdata.game.player
+    item = item_name.strip()
+    if item in player.inventory:
+        player.inventory.remove(item)
+        return f"Removed '{item}' from the Hunter's inventory. Current inventory: {player.inventory}."
+    return f"Item '{item}' was not in inventory. Current inventory: {player.inventory}."
 
-IF user says YES (legitimate):
-- Reassure them.
-- Call mark_fraud_case:
-    status="confirmed_safe"
-    note="Customer confirmed the transaction as legitimate."
 
-IF user says NO (fraud):
-- Calmly say you will block the card and begin a dispute (demo).
-- Call mark_fraud_case:
-    status="confirmed_fraud"
-    note="Customer denied transaction; card blocked (demo)."
+@function_tool
+async def get_status(
+    ctx: RunContext[Userdata],
+) -> str:
+    """
+    Get a 'Status Window' summary of the Hunter's current HP and inventory.
+    """
+    player = ctx.userdata.game.player
+    inv = player.inventory or ["(empty)"]
+    return (
+        f"Status Window — HP: {player.hp}/{player.max_hp}. "
+        f"Inventory: {', '.join(inv)}. "
+        "Use this to answer questions like 'What do I have?' or 'How injured am I?'. "
+        "Describe it as a glowing System panel appearing in front of the Hunter."
+    )
 
-------------------------------------------------------------
-5. SAFETY RULES
-------------------------------------------------------------
-NEVER ask for:
-- Full card number
-- PIN
-- OTP
-- Password
-- Net banking details
 
-------------------------------------------------------------
-6. END
-------------------------------------------------------------
-- Give a final short summary.
-- Say goodbye politely.
+# ---------------------------------------------------------
+# Solo Leveling–Style GM Prompt (SHORT DEMO VERSION)
+# ---------------------------------------------------------
+SOLO_GM_PROMPT = """
+You are a Solo Leveling–inspired **Dungeon Game Master System**.
+
+This is a **SHORT DEMO RUN** for a LinkedIn video, so:
+- Keep the entire adventure to **4–6 turns only**.
+- Finish the story in **under ~2 minutes** of conversation.
+- The Hunter must:
+  - Enter the Gate,
+  - Encounter ONE quick threat,
+  - Use at least ONE System Check (dice roll),
+  - Have at least ONE HP change (damage or heal),
+  - Optionally gain ONE loot item.
+- End with a CLEAR mini-ending (defeat the enemy, escape the Dungeon, or barely survive).
+
+WORLD:
+- Modern world where dimensional Gates appear, leading to monster-filled Dungeons.
+- The player is a new, low-rank Hunter entering a small, suspicious Gate.
+
+TONE:
+- Tense, cool, Solo Leveling vibes.
+- Keep narration short and punchy (3–4 sentences).
+- Describe the world in the second person ("you").
+- Occasionally mention glowing blue System messages appearing.
+
+YOUR ROLE:
+- You are both the **narrator** and the **System** of this Dungeon run.
+- The player is the Hunter. You never act as the Hunter yourself.
+- You ALWAYS end your reply with: **"What do you do?"**
+  EXCEPT on the final turn where you clearly end the story.
+
+TOOLS:
+- Use `roll_check` when the Hunter attempts something risky.
+- Use `modify_hp` when the Hunter takes damage or heals.
+- Use `add_item` / `remove_item` for loot and inventory.
+- Use `get_status` if the Hunter asks for their Status/Inventory.
+
+HUNTER:
+- Starts with HP 20/20 and empty inventory.
+- Early on, ask for the Hunter's name and remember it.
+- You may grant a basic starter weapon via `add_item` like "rusty dagger".
+
+STRUCTURE (KEEP IT SHORT):
+1. Turn 1:
+   - Introduce the strange Gate and the Dungeon entrance.
+   - Ask for the Hunter's name and what they want to do.
+
+2. Turn 2:
+   - Lead them inside (corridor/room).
+   - Introduce a weak enemy or immediate threat.
+
+3. Turn 3:
+   - When they act (attack, dodge, etc.), call `roll_check` with a suitable difficulty.
+   - Based on result, use `modify_hp` if needed.
+   - Narrate outcome Solo Leveling–style.
+
+4–5:
+   - Resolve the conflict quickly (enemy defeated or escape).
+   - Optionally `add_item` for loot.
+   - Optionally `get_status` if they ask.
+
+Final Turn:
+   - Finish the mini-arc (Gate closes / escape / victory).
+   - Do NOT say "What do you do?" on the final line; clearly end the story.
+
+IMPORTANT:
+- Do NOT mention tool names or raw dice values unless styled as in-universe System messages
+  (e.g. "System: CHECK – SUCCESS").
+- Do NOT say you are an AI or model. Stay fully in-universe.
 """
 
-        super().__init__(instructions=instructions, tools=[mark_fraud_case])
+
+# ---------------------------------------------------------
+# Agent Definition
+# ---------------------------------------------------------
+class SoloLevelingGameMasterAgent(Agent):
+    def __init__(self):
+        super().__init__(
+            instructions=SOLO_GM_PROMPT,
+            tools=[roll_check, modify_hp, add_item, remove_item, get_status],
+        )
 
 
-# -----------------------------
-# Prewarm
-# -----------------------------
+# ---------------------------------------------------------
+# Prewarm – load VAD
+# ---------------------------------------------------------
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
-    init_mongo_demo_case()
 
 
-# -----------------------------
+# ---------------------------------------------------------
 # Entrypoint
-# -----------------------------
+# ---------------------------------------------------------
 async def entrypoint(ctx: JobContext):
-    print(f"Starting Slice Bank - Fraud Alert Voice Agent (Agent: {AGENT_NAME})")
+    ctx.log_context_fields = {"room": ctx.room.name}
+    print("Starting Day 8 – Solo Leveling Style Dungeon Game Master (Short Demo)")
 
-    init_mongo_demo_case()
-    case = load_case("case_001")
-
-    fraud_state = FraudState(case_id=case["id"], current_case=case)
-    userdata = Userdata(fraud_state=fraud_state)
+    player = PlayerState()
+    game = GameState(player=player)
+    userdata = Userdata(game=game)
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
-        tts=murf.TTS(voice="en-US-matthew", style="Promo", text_pacing=True),
+                tts = murf.TTS(
+        model="en-US-falcon",
+        api_key=os.environ["MURF_API_KEY"],
+    ),
+
+
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         userdata=userdata,
@@ -264,12 +334,13 @@ async def entrypoint(ctx: JobContext):
     userdata.agent_session = session
 
     await session.start(
-        agent=FraudAlertAgent(case),
+        agent=SoloLevelingGameMasterAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVC()
+            noise_cancellation=noise_cancellation.BVC(),
         ),
     )
+
     await ctx.connect()
 
 

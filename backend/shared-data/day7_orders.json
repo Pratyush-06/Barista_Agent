@@ -1,0 +1,49 @@
+[
+  {
+    "order_id": "ZE-20251128-180501-F1EB",
+    "brand": "Zepto",
+    "timestamp": "2025-11-28T18:05:01",
+    "customer_name": "Pratyush",
+    "delivery_address": "Bhubaneswar Odisha",
+    "items": [
+      {
+        "item_id": "milk_1l",
+        "name": "Toned Milk 1L",
+        "unit_price": 65.0,
+        "quantity": 3,
+        "line_total": 195.0,
+        "unit": "1L",
+        "notes": ""
+      },
+      {
+        "item_id": "bread_wheat",
+        "name": "Whole Wheat Bread",
+        "unit_price": 45.0,
+        "quantity": 2,
+        "line_total": 90.0,
+        "unit": "400g",
+        "notes": ""
+      },
+      {
+        "item_id": "chips_masala",
+        "name": "Masala Potato Chips",
+        "unit_price": 40.0,
+        "quantity": 1,
+        "line_total": 40.0,
+        "unit": "80g",
+        "notes": ""
+      },
+      {
+        "item_id": "peanut_butter",
+        "name": "Peanut Butter Jar",
+        "unit_price": 180.0,
+        "quantity": 1,
+        "line_total": 180.0,
+        "unit": "350g",
+        "notes": ""
+      }
+    ],
+    "total": 505.0,
+    "status": "received"
+  }
+]
