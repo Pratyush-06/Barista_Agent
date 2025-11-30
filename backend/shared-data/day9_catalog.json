@@ -1,0 +1,128 @@
+[
+  {
+    "id": "mug-001",
+    "name": "Stoneware Coffee Mug",
+    "description": "Matte finish stoneware mug, 350ml, perfect for morning chai or coffee.",
+    "price": 399,
+    "currency": "INR",
+    "category": "mug",
+    "color": "white",
+    "tags": [
+      "coffee",
+      "minimal",
+      "office"
+    ]
+  },
+  {
+    "id": "mug-002",
+    "name": "Midnight Code Mug",
+    "description": "Black ceramic mug with glow-in-the-dark code pattern.",
+    "price": 549,
+    "currency": "INR",
+    "category": "mug",
+    "color": "black",
+    "tags": [
+      "developer",
+      "dark-theme"
+    ]
+  },
+  {
+    "id": "tee-001",
+    "name": "Debug Mode T-shirt",
+    "description": "Unisex cotton tee with 'In Debug Mode' print.",
+    "price": 899,
+    "currency": "INR",
+    "category": "tshirt",
+    "color": "black",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "tags": [
+      "developer",
+      "casual"
+    ]
+  },
+  {
+    "id": "tee-002",
+    "name": "Coffee & Code T-shirt",
+    "description": "Beige tee with minimal coffee + code icon.",
+    "price": 799,
+    "currency": "INR",
+    "category": "tshirt",
+    "color": "beige",
+    "sizes": [
+      "M",
+      "L"
+    ],
+    "tags": [
+      "coffee",
+      "minimal"
+    ]
+  },
+  {
+    "id": "hoodie-001",
+    "name": "Night Owl Hoodie",
+    "description": "Black fleece hoodie for late-night coding sessions.",
+    "price": 1599,
+    "currency": "INR",
+    "category": "hoodie",
+    "color": "black",
+    "sizes": [
+      "M",
+      "L",
+      "XL"
+    ],
+    "tags": [
+      "warm",
+      "hoodie",
+      "developer"
+    ]
+  },
+  {
+    "id": "hoodie-002",
+    "name": "Zepto Logo Hoodie",
+    "description": "Navy blue hoodie with small Zepto chest logo.",
+    "price": 1399,
+    "currency": "INR",
+    "category": "hoodie",
+    "color": "navy",
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "tags": [
+      "brand",
+      "minimal"
+    ]
+  },
+  {
+    "id": "accessory-001",
+    "name": "Aluminium Laptop Stand",
+    "description": "Adjustable height laptop stand, silver finish.",
+    "price": 1299,
+    "currency": "INR",
+    "category": "accessory",
+    "color": "silver",
+    "tags": [
+      "ergonomic",
+      "office"
+    ]
+  },
+  {
+    "id": "accessory-002",
+    "name": "Mechanical Keyboard - Blue Switches",
+    "description": "Compact 87-key mech keyboard with blue switches.",
+    "price": 2999,
+    "currency": "INR",
+    "category": "accessory",
+    "color": "black",
+    "tags": [
+      "keyboard",
+      "mechanical"
+    ]
+  }
+]

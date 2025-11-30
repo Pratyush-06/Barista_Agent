@@ -1,20 +1,27 @@
 """
-Day 8 – Solo Leveling Inspired Voice Game Master (Short Demo Version)
+Day 9 – E-commerce Voice Agent (Cart + Checkout)
 
-Theme:
-- Modern world with Gates & Dungeons (Solo Leveling style).
-- You are a low-rank Hunter entering a dangerous dungeon.
-- A mysterious "System" tracks your HP and Inventory and evaluates your actions.
+Brand: Zepto
 
-Designed as a SHORT DEMO (4–6 turns) for LinkedIn video:
-- Shows storytelling + dice checks + HP change + optional loot.
+Features:
+- Voice-based shopping assistant using Murf Falcon TTS.
+- Small developer-themed catalog (mugs, t-shirts, hoodies, accessories).
+- Tools:
+    - list_products: search & filter catalog
+    - add_to_cart_from_results: add item by index from last search
+    - remove_from_cart: remove item from cart by index
+    - show_cart: summarize current cart
+    - checkout_cart: create an order from cart, persist to JSON
+    - get_last_order_summary: answer "What did I just buy?"
+- Orders persisted to backend/shared-data/day9_orders.json
 """
 
+import json
 import logging
 import os
-import random
 from dataclasses import dataclass, field
-from typing import List, Optional, Annotated
+from datetime import datetime
+from typing import Annotated, Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -34,298 +41,524 @@ from livekit.agents import (
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-logger = logging.getLogger("day8_solo_gm")
+logger = logging.getLogger("day9-ecommerce")
 logging.basicConfig(level=logging.INFO)
+
 load_dotenv(".env.local")
 
+BRAND_NAME = "Zepto"
+CURRENCY = "INR"
 
-# ---------------------------------------------------------
-# Player / Game State
-# ---------------------------------------------------------
+# -----------------------------
+# Paths & Files
+# -----------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "shared-data"))
+CATALOG_FILE = os.path.join(DATA_DIR, "day9_catalog.json")
+ORDERS_FILE = os.path.join(DATA_DIR, "day9_orders.json")
+
+
+# -----------------------------
+# Default Catalog
+# -----------------------------
+DEFAULT_CATALOG: List[Dict[str, Any]] = [
+    {
+        "id": "mug-001",
+        "name": "Stoneware Coffee Mug",
+        "description": "Matte finish stoneware mug, 350ml, perfect for morning chai or coffee.",
+        "price": 399,
+        "currency": CURRENCY,
+        "category": "mug",
+        "color": "white",
+        "tags": ["coffee", "minimal", "office"],
+    },
+    {
+        "id": "mug-002",
+        "name": "Midnight Code Mug",
+        "description": "Black ceramic mug with glow-in-the-dark code pattern.",
+        "price": 549,
+        "currency": CURRENCY,
+        "category": "mug",
+        "color": "black",
+        "tags": ["developer", "dark-theme"],
+    },
+    {
+        "id": "tee-001",
+        "name": "Debug Mode T-shirt",
+        "description": "Unisex cotton tee with 'In Debug Mode' print.",
+        "price": 899,
+        "currency": CURRENCY,
+        "category": "tshirt",
+        "color": "black",
+        "sizes": ["S", "M", "L", "XL"],
+        "tags": ["developer", "casual"],
+    },
+    {
+        "id": "tee-002",
+        "name": "Coffee & Code T-shirt",
+        "description": "Beige tee with minimal coffee + code icon.",
+        "price": 799,
+        "currency": CURRENCY,
+        "category": "tshirt",
+        "color": "beige",
+        "sizes": ["M", "L"],
+        "tags": ["coffee", "minimal"],
+    },
+    {
+        "id": "hoodie-001",
+        "name": "Night Owl Hoodie",
+        "description": "Black fleece hoodie for late-night coding sessions.",
+        "price": 1599,
+        "currency": CURRENCY,
+        "category": "hoodie",
+        "color": "black",
+        "sizes": ["M", "L", "XL"],
+        "tags": ["warm", "hoodie", "developer"],
+    },
+    {
+        "id": "hoodie-002",
+        "name": "Zepto Logo Hoodie",
+        "description": "Navy blue hoodie with small Zepto chest logo.",
+        "price": 1399,
+        "currency": CURRENCY,
+        "category": "hoodie",
+        "color": "navy",
+        "sizes": ["S", "M", "L"],
+        "tags": ["brand", "minimal"],
+    },
+    {
+        "id": "accessory-001",
+        "name": "Aluminium Laptop Stand",
+        "description": "Adjustable height laptop stand, silver finish.",
+        "price": 1299,
+        "currency": CURRENCY,
+        "category": "accessory",
+        "color": "silver",
+        "tags": ["ergonomic", "office"],
+    },
+    {
+        "id": "accessory-002",
+        "name": "Mechanical Keyboard - Blue Switches",
+        "description": "Compact 87-key mech keyboard with blue switches.",
+        "price": 2999,
+        "currency": CURRENCY,
+        "category": "accessory",
+        "color": "black",
+        "tags": ["keyboard", "mechanical"],
+    },
+]
+
+
+def ensure_data_files():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if not os.path.exists(CATALOG_FILE):
+        with open(CATALOG_FILE, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_CATALOG, f, indent=2, ensure_ascii=False)
+        logger.info("Created default Day 9 catalog at %s", CATALOG_FILE)
+
+    if not os.path.exists(ORDERS_FILE):
+        with open(ORDERS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f, indent=2, ensure_ascii=False)
+        logger.info("Created empty Day 9 orders file at %s", ORDERS_FILE)
+
+
+def load_catalog() -> List[Dict[str, Any]]:
+    ensure_data_files()
+    with open(CATALOG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_orders() -> List[Dict[str, Any]]:
+    ensure_data_files()
+    with open(ORDERS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_orders(orders: List[Dict[str, Any]]) -> None:
+    with open(ORDERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(orders, f, indent=2, ensure_ascii=False)
+
+
+def generate_order_id() -> str:
+    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    orders = load_orders()
+    return f"ORD-{ts}-{len(orders) + 1:03d}"
+
+
+# -----------------------------
+# Catalog Filter & Order Logic
+# -----------------------------
+def filter_products(
+    query: Optional[str] = None,
+    max_price: Optional[int] = None,
+    category: Optional[str] = None,
+    color: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    products = load_catalog()
+    results: List[Dict[str, Any]] = []
+
+    q_lower = query.lower() if query else None
+    cat_lower = category.lower() if category else None
+    color_lower = color.lower() if color else None
+
+    for p in products:
+        if cat_lower and p.get("category", "").lower() != cat_lower:
+            continue
+        if color_lower and p.get("color", "").lower() != color_lower:
+            continue
+        if max_price is not None and p.get("price", 0) > max_price:
+            continue
+        if q_lower:
+            blob = (p.get("name", "") + " " + p.get("description", "")).lower()
+            if q_lower not in blob:
+                tags = " ".join(p.get("tags", [])).lower()
+                if q_lower not in tags:
+                    continue
+        results.append(p)
+    return results
+
+
+def compute_cart_total(cart_items: List[Dict[str, Any]]) -> int:
+    return sum(int(it["unit_price"]) * int(it["quantity"]) for it in cart_items)
+
+
+# -----------------------------
+# Runtime State
+# -----------------------------
 @dataclass
-class PlayerState:
-    name: Optional[str] = None
-    max_hp: int = 20
-    hp: int = 20
-    inventory: List[str] = field(default_factory=list)
-
-
-@dataclass
-class GameState:
-    player: PlayerState
-    location: str = "Standing at the entrance of a low-rank Gate."
-    last_roll: Optional[dict] = None  # {"roll": int, "difficulty": str, "outcome": str, "action": str}
+class CommerceState:
+    last_results: List[Dict[str, Any]] = field(default_factory=list)
+    cart_items: List[Dict[str, Any]] = field(default_factory=list)
+    last_order_id: Optional[str] = None
 
 
 @dataclass
 class Userdata:
-    game: GameState
+    commerce: CommerceState
     agent_session: Optional[AgentSession] = None
 
 
-# ---------------------------------------------------------
-# Tools – used by the LLM as the "System"
-# ---------------------------------------------------------
+# -----------------------------
+# Tools
+# -----------------------------
 @function_tool
-async def roll_check(
+async def list_products(
     ctx: RunContext[Userdata],
-    action: Annotated[str, Field(
-        description="Short description of what the Hunter is attempting, "
-                    "e.g. 'slash the goblin', 'dodge the attack', 'sneak past the sentry'"
-    )],
-    difficulty: Annotated[str, Field(description="One of: 'easy', 'normal', 'hard'")],
+    query: Annotated[
+        Optional[str],
+        Field(description="Search keywords like 'black hoodie' or 'coffee mug'.", default=None)
+    ] = None,
+
+    max_price: Annotated[
+        Optional[int],
+        Field(description="Maximum price in INR.", default=None)
+    ] = None,
+
+    category: Annotated[
+        Optional[str],
+        Field(description="Category: hoodie, mug, tshirt, accessory.", default=None)
+    ] = None,
+
+    color: Annotated[
+        Optional[str],
+        Field(description="Color preference like black, white, navy.", default=None)
+    ] = None,
+) -> str:
+
+
+    """
+    Filter the product catalog and return a natural language summary.
+    Also updates 'last_results' in the commerce state.
+    """
+    state = ctx.userdata.commerce
+    results = filter_products(query=query, max_price=max_price, category=category, color=color)
+
+    state.last_results = results
+
+    if not results:
+        return "I couldn't find any products matching that description. You can try a different color, category, or budget."
+
+    lines = []
+    for idx, p in enumerate(results[:5], start=1):
+        lines.append(
+            f"{idx}. {p['name']} — {p['price']} {p.get('currency', CURRENCY)} "
+            f"({p.get('color', 'color not specified')}, category: {p.get('category', 'other')})"
+        )
+
+    summary = "Here are a few options I found:\n" + "\n".join(lines)
+    summary += "\n\nYou can say things like 'Add the second one to my cart' or 'Add two of the first hoodies'."
+    return summary
+
+
+@function_tool
+async def add_to_cart_from_results(
+    ctx: RunContext[Userdata],
+    item_index: Annotated[int, Field(description="1-based index from the last product search results.")],
+    quantity: Annotated[int, Field(description="Quantity to add.")] = 1,
 ) -> str:
     """
-    Perform a d20 roll for a risky action.
-    Interpreted as a 'System Check' in the Solo Leveling–style narrative.
+    Add an item to the cart based on index from last_results.
     """
-    diff = difficulty.lower().strip()
-    if diff not in ("easy", "normal", "hard"):
-        diff = "normal"
+    state = ctx.userdata.commerce
+    results = state.last_results
 
-    roll = random.randint(1, 20)
+    if not results:
+        return "I don't have any recent product list to refer to. First ask me to show you some products."
 
-    # thresholds
-    if diff == "easy":
-        if roll >= 10:
-            outcome = "success"
-        elif roll >= 5:
-            outcome = "partial"
-        else:
-            outcome = "fail"
-    elif diff == "hard":
-        if roll >= 16:
-            outcome = "success"
-        elif roll >= 10:
-            outcome = "partial"
-        else:
-            outcome = "fail"
-    else:  # normal
-        if roll >= 13:
-            outcome = "success"
-        elif roll >= 8:
-            outcome = "partial"
-        else:
-            outcome = "fail"
+    if item_index < 1 or item_index > len(results):
+        return f"That item number is out of range. Please choose a number between 1 and {len(results)}."
 
-    ctx.userdata.game.last_roll = {
-        "roll": roll,
-        "difficulty": diff,
-        "outcome": outcome,
-        "action": action,
+    product = results[item_index - 1]
+    qty = max(1, quantity)
+
+    # see if already in cart
+    existing = None
+    for it in state.cart_items:
+        if it["product_id"] == product["id"]:
+            existing = it
+            break
+
+    if existing:
+        existing["quantity"] += qty
+    else:
+        state.cart_items.append(
+            {
+                "product_id": product["id"],
+                "name": product["name"],
+                "quantity": qty,
+                "unit_price": int(product["price"]),
+                "currency": product.get("currency", CURRENCY),
+            }
+        )
+
+    total = compute_cart_total(state.cart_items)
+    return (
+        f"Added {qty} × {product['name']} to your cart. "
+        f"Your current cart total is {total} {CURRENCY}."
+    )
+
+
+@function_tool
+async def remove_from_cart(
+    ctx: RunContext[Userdata],
+    cart_index: Annotated[int, Field(description="1-based index of the item in the current cart list.")],
+) -> str:
+    """
+    Remove an item from the cart by index.
+    """
+    state = ctx.userdata.commerce
+    if not state.cart_items:
+        return "Your cart is currently empty."
+
+    if cart_index < 1 or cart_index > len(state.cart_items):
+        return f"That cart item number is out of range. Please choose between 1 and {len(state.cart_items)}."
+
+    removed = state.cart_items.pop(cart_index - 1)
+    total = compute_cart_total(state.cart_items)
+    msg = f"Removed {removed['name']} from your cart."
+    if state.cart_items:
+        msg += f" Your new cart total is {total} {CURRENCY}."
+    else:
+        msg += " Your cart is now empty."
+    return msg
+
+
+@function_tool
+async def show_cart(ctx: RunContext[Userdata]) -> str:
+    """
+    Summarize the current cart contents and total amount.
+    """
+    state = ctx.userdata.commerce
+    if not state.cart_items:
+        return "Your cart is empty right now."
+
+    lines = []
+    for idx, it in enumerate(state.cart_items, start=1):
+        lines.append(
+            f"{idx}. {it['quantity']} × {it['name']} — {it['unit_price']} {it['currency']} each"
+        )
+
+    total = compute_cart_total(state.cart_items)
+    summary = "Here is your current cart:\n" + "\n".join(lines)
+    summary += f"\n\nCart total: {total} {CURRENCY}."
+    summary += " You can remove an item by saying something like 'Remove the second item from my cart'."
+    return summary
+
+
+@function_tool
+async def checkout_cart(
+    ctx: RunContext[Userdata],
+    buyer_name: Annotated[
+        Optional[str],
+        Field(description="Optional buyer name to attach to the demo order."),
+    ] = None,
+) -> str:
+    """
+    Convert the current cart into an order, save it, and clear the cart.
+    """
+    state = ctx.userdata.commerce
+    if not state.cart_items:
+        return "Your cart is empty. Add at least one item before checking out."
+
+    items = []
+    total = 0
+    for it in state.cart_items:
+        qty = int(it["quantity"])
+        unit = int(it["unit_price"])
+        line_total = qty * unit
+        total += line_total
+        items.append(
+            {
+                "product_id": it["product_id"],
+                "name": it["name"],
+                "quantity": qty,
+                "unit_amount": unit,
+                "currency": it.get("currency", CURRENCY),
+                "line_total": line_total,
+            }
+        )
+
+    order = {
+        "id": generate_order_id(),
+        "items": items,
+        "currency": CURRENCY,
+        "total": total,
+        "buyer": {"name": buyer_name or "Guest"},
+        "status": "PENDING",
+        "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
+    orders = load_orders()
+    orders.append(order)
+    save_orders(orders)
+
+    state.last_order_id = order["id"]
+    state.cart_items.clear()
+
+    desc = ", ".join(f"{it['quantity']} × {it['name']}" for it in order["items"])
     return (
-        f"System Check for action '{action}': d20 = {roll}, "
-        f"difficulty = {diff}, outcome = {outcome}. "
-        "Describe this as a Solo Leveling–style result: clean success, close call, or painful failure."
+        f"Your order {order['id']} has been created for {desc}, with a total of {order['total']} {order['currency']}. "
+        "This is a demo order only—no real payment is processed. Your cart is now empty."
     )
 
 
 @function_tool
-async def modify_hp(
-    ctx: RunContext[Userdata],
-    amount: Annotated[int, Field(
-        description="Positive to heal, negative for damage, e.g. -5 for damage, +3 for healing"
-    )],
-    reason: Annotated[str, Field(
-        description="Short explanation like 'goblin slash', 'healing potion', 'trap explosion'"
-    )],
-) -> str:
+async def get_last_order_summary(ctx: RunContext[Userdata]) -> str:
     """
-    Modify the Hunter's HP (damage or heal). Keeps HP between 0 and max_hp.
+    Return a short summary of the most recent order.
     """
-    player = ctx.userdata.game.player
+    state = ctx.userdata.commerce
+    orders = load_orders()
 
-    old_hp = player.hp
-    player.hp += amount
-    if player.hp > player.max_hp:
-        player.hp = player.max_hp
-    if player.hp < 0:
-        player.hp = 0
+    last = None
+    if state.last_order_id:
+        for o in orders:
+            if o["id"] == state.last_order_id:
+                last = o
+                break
 
-    if amount < 0:
-        change_text = f"took {-amount} damage"
-    elif amount > 0:
-        change_text = f"recovered {amount} HP"
-    else:
-        change_text = "had no HP change"
+    if not last and orders:
+        last = orders[-1]
 
-    status = "alive"
-    if player.hp == 0:
-        status = "down"
+    if not last:
+        return "You haven't placed any orders yet in this demo."
 
+    items_desc = ", ".join(f"{it['quantity']} × {it['name']}" for it in last["items"])
     return (
-        f"Hunter {change_text} due to: {reason}. "
-        f"HP changed from {old_hp} to {player.hp} (max {player.max_hp}). "
-        f"Hunter status: {status}. "
-        "Narrate this like a System notification and describe how it looks/feels in the scene."
+        f"Your most recent order is {last['id']} for {items_desc}, "
+        f"totaling {last['total']} {last['currency']}. Status is {last.get('status', 'PENDING')}."
     )
 
 
-@function_tool
-async def add_item(
-    ctx: RunContext[Userdata],
-    item_name: Annotated[str, Field(
-        description="Name of the item to add to inventory, e.g. 'rusty dagger', 'healing potion', 'shadow crystal'"
-    )],
-) -> str:
-    """
-    Add a new item to the Hunter's inventory.
-    """
-    player = ctx.userdata.game.player
-    item = item_name.strip()
-    if item and item not in player.inventory:
-        player.inventory.append(item)
-        return f"Added '{item}' to the Hunter's inventory. Current inventory: {player.inventory}."
-    return f"Item '{item}' is already in inventory or invalid. Current inventory: {player.inventory}."
-
-
-@function_tool
-async def remove_item(
-    ctx: RunContext[Userdata],
-    item_name: Annotated[str, Field(description="Name of the item to remove from inventory")],
-) -> str:
-    """
-    Remove an item from the Hunter's inventory.
-    """
-    player = ctx.userdata.game.player
-    item = item_name.strip()
-    if item in player.inventory:
-        player.inventory.remove(item)
-        return f"Removed '{item}' from the Hunter's inventory. Current inventory: {player.inventory}."
-    return f"Item '{item}' was not in inventory. Current inventory: {player.inventory}."
-
-
-@function_tool
-async def get_status(
-    ctx: RunContext[Userdata],
-) -> str:
-    """
-    Get a 'Status Window' summary of the Hunter's current HP and inventory.
-    """
-    player = ctx.userdata.game.player
-    inv = player.inventory or ["(empty)"]
-    return (
-        f"Status Window — HP: {player.hp}/{player.max_hp}. "
-        f"Inventory: {', '.join(inv)}. "
-        "Use this to answer questions like 'What do I have?' or 'How injured am I?'. "
-        "Describe it as a glowing System panel appearing in front of the Hunter."
-    )
-
-
-# ---------------------------------------------------------
-# Solo Leveling–Style GM Prompt (SHORT DEMO VERSION)
-# ---------------------------------------------------------
-SOLO_GM_PROMPT = """
-You are a Solo Leveling–inspired **Dungeon Game Master System**.
-
-This is a **SHORT DEMO RUN** for a LinkedIn video, so:
-- Keep the entire adventure to **4–6 turns only**.
-- Finish the story in **under ~2 minutes** of conversation.
-- The Hunter must:
-  - Enter the Gate,
-  - Encounter ONE quick threat,
-  - Use at least ONE System Check (dice roll),
-  - Have at least ONE HP change (damage or heal),
-  - Optionally gain ONE loot item.
-- End with a CLEAR mini-ending (defeat the enemy, escape the Dungeon, or barely survive).
-
-WORLD:
-- Modern world where dimensional Gates appear, leading to monster-filled Dungeons.
-- The player is a new, low-rank Hunter entering a small, suspicious Gate.
-
-TONE:
-- Tense, cool, Solo Leveling vibes.
-- Keep narration short and punchy (3–4 sentences).
-- Describe the world in the second person ("you").
-- Occasionally mention glowing blue System messages appearing.
-
-YOUR ROLE:
-- You are both the **narrator** and the **System** of this Dungeon run.
-- The player is the Hunter. You never act as the Hunter yourself.
-- You ALWAYS end your reply with: **"What do you do?"**
-  EXCEPT on the final turn where you clearly end the story.
-
-TOOLS:
-- Use `roll_check` when the Hunter attempts something risky.
-- Use `modify_hp` when the Hunter takes damage or heals.
-- Use `add_item` / `remove_item` for loot and inventory.
-- Use `get_status` if the Hunter asks for their Status/Inventory.
-
-HUNTER:
-- Starts with HP 20/20 and empty inventory.
-- Early on, ask for the Hunter's name and remember it.
-- You may grant a basic starter weapon via `add_item` like "rusty dagger".
-
-STRUCTURE (KEEP IT SHORT):
-1. Turn 1:
-   - Introduce the strange Gate and the Dungeon entrance.
-   - Ask for the Hunter's name and what they want to do.
-
-2. Turn 2:
-   - Lead them inside (corridor/room).
-   - Introduce a weak enemy or immediate threat.
-
-3. Turn 3:
-   - When they act (attack, dodge, etc.), call `roll_check` with a suitable difficulty.
-   - Based on result, use `modify_hp` if needed.
-   - Narrate outcome Solo Leveling–style.
-
-4–5:
-   - Resolve the conflict quickly (enemy defeated or escape).
-   - Optionally `add_item` for loot.
-   - Optionally `get_status` if they ask.
-
-Final Turn:
-   - Finish the mini-arc (Gate closes / escape / victory).
-   - Do NOT say "What do you do?" on the final line; clearly end the story.
-
-IMPORTANT:
-- Do NOT mention tool names or raw dice values unless styled as in-universe System messages
-  (e.g. "System: CHECK – SUCCESS").
-- Do NOT say you are an AI or model. Stay fully in-universe.
-"""
-
-
-# ---------------------------------------------------------
+# -----------------------------
 # Agent Definition
-# ---------------------------------------------------------
-class SoloLevelingGameMasterAgent(Agent):
+# -----------------------------
+class EcommerceCartAgent(Agent):
     def __init__(self):
+        instructions = f"""
+You are a friendly voice-based shopping assistant for {BRAND_NAME}.
+
+GOAL:
+- Help the user browse a small catalog (mugs, t-shirts, hoodies, accessories).
+- Let them add items to a cart, review the cart, and then check out.
+- Always use the tools instead of inventing products or prices.
+
+BROWSING:
+- When the user asks things like:
+  - "Show me black hoodies under 1600"
+  - "Any coffee mugs around 400 rupees?"
+  - "Do you have developer t-shirts?"
+- Call list_products with an appropriate query, max_price, category, or color.
+- Then read back the top results with index numbers (1, 2, 3, ...).
+
+CART:
+- When the user says:
+  - "Add the second one to my cart"
+  - "Add two of the first hoodies"
+- Interpret the reference as an index into the latest list_products results.
+- Call add_to_cart_from_results with that index and quantity.
+- Confirm what was added and the updated cart total.
+
+- When they ask:
+  - "What's in my cart?"
+- Call show_cart and read the summary.
+
+- When they say:
+  - "Remove the second item from my cart"
+- Call remove_from_cart with that index.
+
+CHECKOUT:
+- When the user says:
+  - "Checkout", "Place my order", or "I'm done, place the order"
+- First call show_cart to confirm items if needed.
+- Then call checkout_cart, optionally passing their name if they mention it.
+- After checkout, the cart should be empty.
+
+ORDER HISTORY:
+- If they ask:
+  - "What did I just buy?" or "What was my last order?"
+- Call get_last_order_summary and read it out.
+
+STYLE:
+- Be concise, polite, and structured.
+- Never claim to charge real money: explicitly say it's a demo / sandbox order.
+- Keep the conversation focused on discovering products, managing the cart, and placing demo orders.
+"""
         super().__init__(
-            instructions=SOLO_GM_PROMPT,
-            tools=[roll_check, modify_hp, add_item, remove_item, get_status],
+            instructions=instructions,
+            tools=[
+                list_products,
+                add_to_cart_from_results,
+                remove_from_cart,
+                show_cart,
+                checkout_cart,
+                get_last_order_summary,
+            ],
         )
 
 
-# ---------------------------------------------------------
-# Prewarm – load VAD
-# ---------------------------------------------------------
+# -----------------------------
+# Prewarm & Entrypoint
+# -----------------------------
 def prewarm(proc: JobProcess):
+    ensure_data_files()
     proc.userdata["vad"] = silero.VAD.load()
 
 
-# ---------------------------------------------------------
-# Entrypoint
-# ---------------------------------------------------------
 async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
-    print("Starting Day 8 – Solo Leveling Style Dungeon Game Master (Short Demo)")
+    print("Starting Day 9 – Zepto E-commerce Cart Agent")
 
-    player = PlayerState()
-    game = GameState(player=player)
-    userdata = Userdata(game=game)
+    commerce_state = CommerceState()
+    userdata = Userdata(commerce=commerce_state)
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=google.LLM(model="gemini-2.5-flash"),
-                tts = murf.TTS(
-        model="en-US-falcon",
-        api_key=os.environ["MURF_API_KEY"],
-    ),
-
-
+        tts=murf.TTS(
+            model="en-US-falcon",
+            api_key=os.environ.get("MURF_API_KEY", ""),
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         userdata=userdata,
@@ -334,10 +567,10 @@ async def entrypoint(ctx: JobContext):
     userdata.agent_session = session
 
     await session.start(
-        agent=SoloLevelingGameMasterAgent(),
+        agent=EcommerceCartAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVC(),
+            noise_cancellation=noise_cancellation.BVC()
         ),
     )
 

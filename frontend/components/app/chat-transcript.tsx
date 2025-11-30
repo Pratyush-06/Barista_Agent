@@ -1,146 +1,118 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import type { ReceivedChatMessage } from '@livekit/components-react';
+import * as React from 'react';
+import { useTranscriptions } from '@livekit/components-react';
+import type { AppConfig } from '@/app-config';
 
-const MotionContainer = motion.create('div');
-
-export type ChatTranscriptProps = {
-  messages: ReceivedChatMessage[];
+interface ChatTranscriptProps {
   className?: string;
-};
-
-/** Safely extract plain text from the message */
-function extractText(msg: ReceivedChatMessage): string {
-  const m: any = msg as any;
-
-  if (typeof m.text === 'string') return m.text;
-  if (typeof m.message === 'string') return m.message;
-  if (m.message && typeof m.message.text === 'string') return m.message.text;
-  if (m.payload && typeof m.payload === 'string') return m.payload;
-
-  return '';
+  appConfig?: AppConfig;
 }
 
-/** Decide if this text should trigger a Solo Leveling System Window */
-function isSystemWindow(text: string): boolean {
-  const lower = text.toLowerCase();
-  return (
-    text.startsWith('Status Window') ||
-    text.startsWith('System Check') ||
-    lower.includes('status window —') ||
-    lower.includes('hp:') ||
-    lower.includes('system message')
-  );
-}
-
-export function ChatTranscript({ messages, className }: ChatTranscriptProps) {
-  const [popupText, setPopupText] = useState<string | null>(null);
-  const [popupKey, setPopupKey] = useState(0);
-
-  // Whenever a new assistant message looks like a System Window, show popup
-  useEffect(() => {
-    if (!messages.length) return;
-    const last = messages[messages.length - 1];
-    const isUser = last.from?.identity === 'user';
-    if (isUser) return;
-
-    const text = extractText(last);
-    if (text && isSystemWindow(text)) {
-      setPopupText(text);
-      setPopupKey((prev) => prev + 1);
-    }
-  }, [messages]);
-
-  // Auto-hide the popup after 4 seconds
-  useEffect(() => {
-    if (!popupText) return;
-    const t = setTimeout(() => setPopupText(null), 4000);
-    return () => clearTimeout(t);
-  }, [popupText]);
+/**
+ * Minimal transcript panel that:
+ * - Shows assistant & user messages from LiveKit transcriptions
+ * - Styles them like a shopping assistant chat
+ */
+export function ChatTranscript(props: ChatTranscriptProps) {
+  const { className, appConfig } = props;
+  const segments = useTranscriptions();
+  const brand = appConfig?.companyName ?? 'Zepto';
 
   return (
     <div
-      className={`w-full h-full flex flex-col gap-3 overflow-y-auto px-4 py-4 ${className ?? ''}`}
-      style={{
-        background:
-          'radial-gradient(circle at top, #111827 0, #020617 45%, #000000 100%)',
-      }}
+      className={
+        'flex h-full w-full flex-col rounded-3xl border border-slate-800 bg-slate-950/80 text-slate-50 ' +
+        (className ?? '')
+      }
     >
-      {/* Main chat bubbles */}
-      <AnimatePresence initial={false}>
-        {messages.map((msg, idx) => {
-          const isUser = msg.from?.identity === 'user';
-          const key = `${msg.id}-${idx}`;
-          const text = extractText(msg);
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <div className="flex flex-col">
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+            {brand} · Voice Commerce
+          </span>
+          <span className="text-[11px] text-slate-400">
+            Ask for products, prices, or your last order.
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          Live
+        </div>
+      </div>
+
+      {/* Transcript body */}
+      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3 text-sm scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700/70">
+        {segments.length === 0 && (
+          <p className="mt-4 text-xs text-slate-500">
+            Your conversation with the shopping assistant will appear here — try saying
+            <span className="ml-1 rounded-md bg-slate-900 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300">
+              “Show me black hoodies under 1500”
+            </span>
+            .
+          </p>
+        )}
+
+        {segments.map((seg, index) => {
+          // Coerce to any so we don't fight strict typings of TextStreamData
+          const s: any = seg;
+          const id = s.id ?? String(index);
+          const senderIdentity: string =
+            s.senderIdentity ||
+            s.participantIdentity ||
+            (s.isLocal ? 'user' : 'agent');
+
+          const isAgent =
+            typeof senderIdentity === 'string' &&
+            (senderIdentity.startsWith('agent') ||
+              senderIdentity === 'assistant' ||
+              senderIdentity.includes('voice_assistant'));
+
+          const bubbleBase =
+            'max-w-[80%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed';
 
           return (
-            <MotionContainer
-              key={key}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.22 }}
+            <div
+              key={id}
+              className={
+                'flex w-full ' +
+                (isAgent ? 'justify-start' : 'justify-end')
+              }
             >
-              <div
-                className={`rounded-2xl px-4 py-3 mb-2 border shadow-lg max-w-[80%] ${
-                  isUser
-                    ? 'ml-0 mr-auto border-emerald-400/60 bg-slate-900/80 text-emerald-100'
-                    : 'ml-auto mr-0 border-cyan-400/70 bg-slate-950/90 text-cyan-50 shadow-cyan-500/40'
-                }`}
-                style={{ backdropFilter: 'blur(6px)' }}
-              >
+              <div className="flex max-w-full flex-col gap-0.5">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                  {isAgent ? `${brand} · Assistant` : 'You'}
+                </span>
                 <div
-                  className={`text-[10px] uppercase tracking-[0.16em] mb-1 ${
-                    isUser ? 'text-emerald-300' : 'text-cyan-300'
-                  }`}
+                  className={
+                    bubbleBase +
+                    ' ' +
+                    (isAgent
+                      ? 'bg-slate-900 text-slate-50 border border-slate-800'
+                      : 'bg-emerald-500 text-slate-950')
+                  }
                 >
-                  {isUser ? 'Hunter' : 'System'}
+                  {s.text}
                 </div>
-
-                <div className="text-sm leading-relaxed whitespace-pre-line">
-                  {text}
-                </div>
-
-                <div
-                  className="mt-3 h-[2px] w-full"
-                  style={{
-                    background: isUser
-                      ? 'linear-gradient(to right, #34d399, transparent)'
-                      : 'linear-gradient(to right, #22d3ee, transparent)',
-                  }}
-                />
-              </div>
-            </MotionContainer>
-          );
-        })}
-      </AnimatePresence>
-
-      {/* Solo Leveling floating System Window – SINGLE popup, auto-hides */}
-      <AnimatePresence>
-        {popupText && (
-          <motion.div
-            key={popupKey}
-            initial={{ opacity: 0, y: -8, x: 8 }}
-            animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, y: -8, x: 8 }}
-            transition={{ duration: 0.2 }}
-            className="fixed top-4 right-4 z-50 max-w-sm animate-fade-in"
-          >
-            <div className="px-4 py-3 rounded-xl border border-cyan-300 bg-cyan-900/80 shadow-lg shadow-cyan-500/40 backdrop-blur-md">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200 mb-1">
-                System Window
-              </div>
-              <div className="text-sm text-cyan-50 whitespace-pre-line">
-                {popupText}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          );
+        })}
+      </div>
+
+      {/* Footer helper */}
+      <div className="border-t border-slate-800 px-4 py-2 text-[11px] text-slate-500">
+        Hint: you can ask things like{' '}
+        <span className="font-mono text-emerald-300">
+          “What did I just buy?”
+        </span>{' '}
+        or{' '}
+        <span className="font-mono text-emerald-300">
+          “Do you have any t-shirts under 1000?”
+        </span>
+        .
+      </div>
     </div>
   );
 }
-
-export default ChatTranscript;

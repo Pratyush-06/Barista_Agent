@@ -2,113 +2,95 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
+import Link from 'next/link';
 
-type WelcomeViewProps = {
-  startButtonText?: string;
-  onStartCall?: () => void;
-  className?: string;
-};
-
-const MotionButton = motion.button;
-
-function WelcomeViewInner({
-  startButtonText = 'Enter the Gate',
+export default function WelcomeView({
+  startButtonText = 'Start Voice Shopping',
   onStartCall,
-  className,
-}: WelcomeViewProps) {
-  const handleEnterGate = () => {
-    if (onStartCall) {
-      onStartCall(); // this calls startSession from useSession()
-    } else {
-      console.warn('WelcomeView.onStartCall is not defined');
-    }
-  };
-
+  className = '',
+}: {
+  startButtonText?: string;
+  onStartCall: () => void;
+  className?: string;
+}) {
   return (
     <div
-      className={`min-h-screen flex items-center justify-center px-4 text-solo-text ${className ?? ''}`}
-      style={{
-        background:
-          'radial-gradient(circle at top, #1f2937 0, #020617 45%, #000000 100%)',
-      }}
+      className={`flex flex-col items-center justify-center text-center px-6 py-12 w-full min-h-screen 
+        bg-gradient-to-b from-[#0c0c0f] to-[#15151b] text-white ${className}`}
     >
-      <div className="max-w-3xl w-full text-center">
-        {/* Title */}
-        <motion.h1
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="text-4xl md:text-5xl font-extrabold tracking-tight text-solo-title drop-shadow-lg"
-        >
-          Solo Leveling – Dungeon Run
-        </motion.h1>
+      {/* Top Logo */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="mb-8"
+      >
+        <img
+          src="/zepto-logo.svg"
+          alt="Logo"
+          className="h-12 opacity-90"
+        />
+      </motion.div>
 
-        {/* Subtitle */}
-        <motion.p
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
-          className="mt-4 text-base md:text-lg text-solo-subtitle max-w-2xl mx-auto"
-        >
-          Enter the Gate as a low-rank Hunter. The System will narrate your fate,
-          track your HP & inventory, and roll the dice on every risky choice.
-        </motion.p>
+      {/* Title */}
+      <motion.h1
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.15 }}
+        className="text-4xl md:text-5xl font-bold mb-4"
+      >
+        Voice Shopping Assistant
+      </motion.h1>
 
-        {/* System panel */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.25, ease: 'easeOut' }}
-          className="mt-8 mx-auto max-w-xl rounded-2xl border border-solo-panel/40 bg-solo-panel/60 backdrop-blur-md shadow-2xl shadow-solo-accent/20 p-5 text-left"
-        >
-          <div className="text-xs font-mono text-solo-accent mb-1">
-            ▸ SYSTEM NOTICE
-          </div>
-          <p className="text-sm text-solo-text/90 leading-relaxed">
-            This is a voice-controlled dungeon. Speak your actions like:
-            <br />
-            <span className="text-solo-accent/90">
-              “Inspect the surroundings”, “Open the status window”, “Attack the
-              goblin”, “Drink a potion”…
-            </span>
-            <br />
-            The System will roll the dice, resolve outcomes, and update your HP
-            and inventory in real time.
-          </p>
-        </motion.div>
+      {/* Subtitle */}
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.3 }}
+        className="text-gray-300 text-lg max-w-xl mb-10"
+      >
+        Browse items, compare options, and place orders using your voice.  
+        Powered by AI, built with Murf Falcon + LiveKit.
+      </motion.p>
 
-        {/* Enter button */}
-        <MotionButton
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.4, ease: 'easeOut' }}
-          onClick={handleEnterGate}
-          className="mt-10 inline-flex items-center justify-center rounded-full px-10 py-3.5 text-sm md:text-base font-semibold
-                     bg-solo-btn from-solo-btn to-solo-btn/80 bg-gradient-to-r text-white shadow-lg shadow-solo-accent/40
-                     hover:shadow-solo-accent/60 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200
-                     border border-solo-btn-border"
-        >
-          {startButtonText}
-        </MotionButton>
+      {/* Main Start Button */}
+      <motion.button
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.45, delay: 0.4 }}
+        onClick={() => onStartCall()}
+        className="px-8 py-3 rounded-xl text-lg font-semibold 
+          bg-gradient-to-r from-[#FF2E63] to-[#FF6B81] 
+          shadow-xl shadow-[#ff2e6355]
+          hover:scale-105 transition-transform duration-200"
+      >
+        {startButtonText}
+      </motion.button>
 
-        {/* Footer text */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.6 }}
-          className="mt-6 text-xs md:text-sm text-solo-subtitle/80"
+      {/* Optional: Transcript Page Link */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.9 }}
+        className="mt-10"
+      >
+        <Link
+          href="/transcripts"
+          className="text-sm text-gray-400 hover:text-white underline"
         >
-          A Day 8 project for the Murf AI Voice Agent Challenge · Powered by Murf
-          Falcon (Hugo · Narration) &amp; LiveKit Agents
-        </motion.p>
-      </div>
+          View Previous Conversations →
+        </Link>
+      </motion.div>
+
+      {/* Footer */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.5 }}
+        transition={{ delay: 1.0 }}
+        className="mt-12 text-xs text-gray-500"
+      >
+        A project for the Murf AI Voice Agents Challenge — #Day9
+      </motion.p>
     </div>
   );
 }
-
-// default + named export so ViewController can use { WelcomeView }
-export default function WelcomeView(props: WelcomeViewProps) {
-  return <WelcomeViewInner {...props} />;
-}
-
-export { WelcomeView };
