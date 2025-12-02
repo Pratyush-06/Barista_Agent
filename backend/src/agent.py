@@ -1,27 +1,21 @@
 """
-Day 9 – E-commerce Voice Agent (Cart + Checkout)
+Day 10 – Improv Battle Voice Agent
+Single-player voice improv game show host.
 
-Brand: Zepto
-
-Features:
-- Voice-based shopping assistant using Murf Falcon TTS.
-- Small developer-themed catalog (mugs, t-shirts, hoodies, accessories).
-- Tools:
-    - list_products: search & filter catalog
-    - add_to_cart_from_results: add item by index from last search
-    - remove_from_cart: remove item from cart by index
-    - show_cart: summarize current cart
-    - checkout_cart: create an order from cart, persist to JSON
-    - get_last_order_summary: answer "What did I just buy?"
-- Orders persisted to backend/shared-data/day9_orders.json
+Game: "Improv Battle"
+- AI is the high-energy host.
+- Runs N rounds (e.g. 3).
+- Each round:
+  1) Host gives a fun scenario.
+  2) Player improvises in character.
+  3) Host reacts (sometimes praise, sometimes light critique).
+- Keeps simple state (player_name, current_round, rounds info).
 """
 
-import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Optional, List, Dict, Any
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -41,516 +35,322 @@ from livekit.agents import (
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-logger = logging.getLogger("day9-ecommerce")
+logger = logging.getLogger("improv_battle_agent")
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv(".env.local")
 
-BRAND_NAME = "Zepto"
-CURRENCY = "INR"
+SHOW_NAME = "Improv Battle"
 
 # -----------------------------
-# Paths & Files
+# Improv Scenarios
 # -----------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "shared-data"))
-CATALOG_FILE = os.path.join(DATA_DIR, "day9_catalog.json")
-ORDERS_FILE = os.path.join(DATA_DIR, "day9_orders.json")
 
-
-# -----------------------------
-# Default Catalog
-# -----------------------------
-DEFAULT_CATALOG: List[Dict[str, Any]] = [
+SCENARIOS: List[Dict[str, str]] = [
     {
-        "id": "mug-001",
-        "name": "Stoneware Coffee Mug",
-        "description": "Matte finish stoneware mug, 350ml, perfect for morning chai or coffee.",
-        "price": 399,
-        "currency": CURRENCY,
-        "category": "mug",
-        "color": "white",
-        "tags": ["coffee", "minimal", "office"],
+        "id": "s1",
+        "title": "Time-Travel Phone Demo",
+        "prompt": (
+            "You are a time-traveling tour guide trying to explain modern smartphones "
+            "to someone from the 1800s who thinks it's dark magic."
+        ),
     },
     {
-        "id": "mug-002",
-        "name": "Midnight Code Mug",
-        "description": "Black ceramic mug with glow-in-the-dark code pattern.",
-        "price": 549,
-        "currency": CURRENCY,
-        "category": "mug",
-        "color": "black",
-        "tags": ["developer", "dark-theme"],
+        "id": "s2",
+        "title": "Escaped Order",
+        "prompt": (
+            "You are a restaurant waiter who has to calmly explain to a customer "
+            "that their main course has escaped the kitchen and is running through the streets."
+        ),
     },
     {
-        "id": "tee-001",
-        "name": "Debug Mode T-shirt",
-        "description": "Unisex cotton tee with 'In Debug Mode' print.",
-        "price": 899,
-        "currency": CURRENCY,
-        "category": "tshirt",
-        "color": "black",
-        "sizes": ["S", "M", "L", "XL"],
-        "tags": ["developer", "casual"],
+        "id": "s3",
+        "title": "Cursed Return Counter",
+        "prompt": (
+            "You are a customer trying to return an obviously cursed object "
+            "to a very skeptical shop owner who insists it's 'perfectly normal'."
+        ),
     },
     {
-        "id": "tee-002",
-        "name": "Coffee & Code T-shirt",
-        "description": "Beige tee with minimal coffee + code icon.",
-        "price": 799,
-        "currency": CURRENCY,
-        "category": "tshirt",
-        "color": "beige",
-        "sizes": ["M", "L"],
-        "tags": ["coffee", "minimal"],
+        "id": "s4",
+        "title": "Portal Latte",
+        "prompt": (
+            "You are a barista who has to tell a regular customer that their latte "
+            "is actually a portal to another dimension, but try to keep them calm."
+        ),
     },
     {
-        "id": "hoodie-001",
-        "name": "Night Owl Hoodie",
-        "description": "Black fleece hoodie for late-night coding sessions.",
-        "price": 1599,
-        "currency": CURRENCY,
-        "category": "hoodie",
-        "color": "black",
-        "sizes": ["M", "L", "XL"],
-        "tags": ["warm", "hoodie", "developer"],
-    },
-    {
-        "id": "hoodie-002",
-        "name": "Zepto Logo Hoodie",
-        "description": "Navy blue hoodie with small Zepto chest logo.",
-        "price": 1399,
-        "currency": CURRENCY,
-        "category": "hoodie",
-        "color": "navy",
-        "sizes": ["S", "M", "L"],
-        "tags": ["brand", "minimal"],
-    },
-    {
-        "id": "accessory-001",
-        "name": "Aluminium Laptop Stand",
-        "description": "Adjustable height laptop stand, silver finish.",
-        "price": 1299,
-        "currency": CURRENCY,
-        "category": "accessory",
-        "color": "silver",
-        "tags": ["ergonomic", "office"],
-    },
-    {
-        "id": "accessory-002",
-        "name": "Mechanical Keyboard - Blue Switches",
-        "description": "Compact 87-key mech keyboard with blue switches.",
-        "price": 2999,
-        "currency": CURRENCY,
-        "category": "accessory",
-        "color": "black",
-        "tags": ["keyboard", "mechanical"],
+        "id": "s5",
+        "title": "Over-Honest AI Assistant",
+        "prompt": (
+            "You are an AI assistant that suddenly becomes brutally honest during a product demo "
+            "in front of investors."
+        ),
     },
 ]
 
-
-def ensure_data_files():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    if not os.path.exists(CATALOG_FILE):
-        with open(CATALOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(DEFAULT_CATALOG, f, indent=2, ensure_ascii=False)
-        logger.info("Created default Day 9 catalog at %s", CATALOG_FILE)
-
-    if not os.path.exists(ORDERS_FILE):
-        with open(ORDERS_FILE, "w", encoding="utf-8") as f:
-            json.dump([], f, indent=2, ensure_ascii=False)
-        logger.info("Created empty Day 9 orders file at %s", ORDERS_FILE)
-
-
-def load_catalog() -> List[Dict[str, Any]]:
-    ensure_data_files()
-    with open(CATALOG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def load_orders() -> List[Dict[str, Any]]:
-    ensure_data_files()
-    with open(ORDERS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_orders(orders: List[Dict[str, Any]]) -> None:
-    with open(ORDERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(orders, f, indent=2, ensure_ascii=False)
-
-
-def generate_order_id() -> str:
-    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    orders = load_orders()
-    return f"ORD-{ts}-{len(orders) + 1:03d}"
-
-
 # -----------------------------
-# Catalog Filter & Order Logic
+# State
 # -----------------------------
-def filter_products(
-    query: Optional[str] = None,
-    max_price: Optional[int] = None,
-    category: Optional[str] = None,
-    color: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    products = load_catalog()
-    results: List[Dict[str, Any]] = []
-
-    q_lower = query.lower() if query else None
-    cat_lower = category.lower() if category else None
-    color_lower = color.lower() if color else None
-
-    for p in products:
-        if cat_lower and p.get("category", "").lower() != cat_lower:
-            continue
-        if color_lower and p.get("color", "").lower() != color_lower:
-            continue
-        if max_price is not None and p.get("price", 0) > max_price:
-            continue
-        if q_lower:
-            blob = (p.get("name", "") + " " + p.get("description", "")).lower()
-            if q_lower not in blob:
-                tags = " ".join(p.get("tags", [])).lower()
-                if q_lower not in tags:
-                    continue
-        results.append(p)
-    return results
 
 
-def compute_cart_total(cart_items: List[Dict[str, Any]]) -> int:
-    return sum(int(it["unit_price"]) * int(it["quantity"]) for it in cart_items)
-
-
-# -----------------------------
-# Runtime State
-# -----------------------------
 @dataclass
-class CommerceState:
-    last_results: List[Dict[str, Any]] = field(default_factory=list)
-    cart_items: List[Dict[str, Any]] = field(default_factory=list)
-    last_order_id: Optional[str] = None
+class ImprovRound:
+    scenario_id: str
+    scenario_title: str
+    scenario_prompt: str
+    host_reaction: Optional[str] = None
+
+
+@dataclass
+class ImprovState:
+    player_name: Optional[str] = None
+    current_round: int = 0
+    max_rounds: int = 3
+    phase: str = "intro"  # "intro" | "awaiting_improv" | "reacting" | "done"
+    rounds: List[ImprovRound] = field(default_factory=list)
 
 
 @dataclass
 class Userdata:
-    commerce: CommerceState
+    improv_state: ImprovState
     agent_session: Optional[AgentSession] = None
 
 
 # -----------------------------
 # Tools
 # -----------------------------
-@function_tool
-async def list_products(
-    ctx: RunContext[Userdata],
-    query: Annotated[
-        Optional[str],
-        Field(description="Search keywords like 'black hoodie' or 'coffee mug'.", default=None)
-    ] = None,
-
-    max_price: Annotated[
-        Optional[int],
-        Field(description="Maximum price in INR.", default=None)
-    ] = None,
-
-    category: Annotated[
-        Optional[str],
-        Field(description="Category: hoodie, mug, tshirt, accessory.", default=None)
-    ] = None,
-
-    color: Annotated[
-        Optional[str],
-        Field(description="Color preference like black, white, navy.", default=None)
-    ] = None,
-) -> str:
-
-
-    """
-    Filter the product catalog and return a natural language summary.
-    Also updates 'last_results' in the commerce state.
-    """
-    state = ctx.userdata.commerce
-    results = filter_products(query=query, max_price=max_price, category=category, color=color)
-
-    state.last_results = results
-
-    if not results:
-        return "I couldn't find any products matching that description. You can try a different color, category, or budget."
-
-    lines = []
-    for idx, p in enumerate(results[:5], start=1):
-        lines.append(
-            f"{idx}. {p['name']} — {p['price']} {p.get('currency', CURRENCY)} "
-            f"({p.get('color', 'color not specified')}, category: {p.get('category', 'other')})"
-        )
-
-    summary = "Here are a few options I found:\n" + "\n".join(lines)
-    summary += "\n\nYou can say things like 'Add the second one to my cart' or 'Add two of the first hoodies'."
-    return summary
 
 
 @function_tool
-async def add_to_cart_from_results(
+async def set_player_name(
     ctx: RunContext[Userdata],
-    item_index: Annotated[int, Field(description="1-based index from the last product search results.")],
-    quantity: Annotated[int, Field(description="Quantity to add.")] = 1,
+    name: Annotated[str, Field(description="The contestant's name as they want to be introduced on the show")],
 ) -> str:
     """
-    Add an item to the cart based on index from last_results.
+    Save/override the player's name for this improv session.
     """
-    state = ctx.userdata.commerce
-    results = state.last_results
+    state = ctx.userdata.improv_state
+    name = name.strip()
+    if not name:
+        return "Name was empty, keep using the previous one or ask again."
+    state.player_name = name
+    logger.info("Player name set to %s", name)
+    return f"Got it. The contestant's name is {name}. Introduce them with energy."
 
-    if not results:
-        return "I don't have any recent product list to refer to. First ask me to show you some products."
 
-    if item_index < 1 or item_index > len(results):
-        return f"That item number is out of range. Please choose a number between 1 and {len(results)}."
+@function_tool
+async def start_next_round(
+    ctx: RunContext[Userdata],
+) -> str:
+    """
+    Advance to the next round, pick a scenario, and return instructions for the host.
+    """
+    state = ctx.userdata.improv_state
 
-    product = results[item_index - 1]
-    qty = max(1, quantity)
-
-    # see if already in cart
-    existing = None
-    for it in state.cart_items:
-        if it["product_id"] == product["id"]:
-            existing = it
-            break
-
-    if existing:
-        existing["quantity"] += qty
-    else:
-        state.cart_items.append(
-            {
-                "product_id": product["id"],
-                "name": product["name"],
-                "quantity": qty,
-                "unit_price": int(product["price"]),
-                "currency": product.get("currency", CURRENCY),
-            }
+    if state.current_round >= state.max_rounds:
+        state.phase = "done"
+        return (
+            "All rounds are already complete. Move to the closing summary and end the show gracefully."
         )
 
-    total = compute_cart_total(state.cart_items)
+    state.current_round += 1
+    idx = (state.current_round - 1) % len(SCENARIOS)
+    sc = SCENARIOS[idx]
+
+    state.phase = "awaiting_improv"
+    round_obj = ImprovRound(
+        scenario_id=sc["id"],
+        scenario_title=sc["title"],
+        scenario_prompt=sc["prompt"],
+    )
+    state.rounds.append(round_obj)
+
+    logger.info("Starting round %s with scenario %s", state.current_round, sc["id"])
+
+    player = state.player_name or "our contestant"
+
     return (
-        f"Added {qty} × {product['name']} to your cart. "
-        f"Your current cart total is {total} {CURRENCY}."
+        f"Round {state.current_round} of {state.max_rounds}.\n"
+        f"Scenario title: {sc['title']}.\n"
+        f"Scenario prompt: {sc['prompt']}\n\n"
+        f"Address {player} directly, explain the scenario in a fun way, "
+        f"and tell them to improvise in character for a short scene. "
+        f"Ask them to say 'End scene' when they are finished."
     )
 
 
 @function_tool
-async def remove_from_cart(
+async def finish_round(
     ctx: RunContext[Userdata],
-    cart_index: Annotated[int, Field(description="1-based index of the item in the current cart list.")],
+    reaction_summary: Annotated[
+        str,
+        Field(
+            description=(
+                "1–3 sentences summarizing how the player performed in this scene, "
+                "including a mix of positive and lightly critical feedback."
+            )
+        ),
+    ],
 ) -> str:
     """
-    Remove an item from the cart by index.
+    Mark the current round as reacted to and store the host's reaction.
     """
-    state = ctx.userdata.commerce
-    if not state.cart_items:
-        return "Your cart is currently empty."
+    state = ctx.userdata.improv_state
 
-    if cart_index < 1 or cart_index > len(state.cart_items):
-        return f"That cart item number is out of range. Please choose between 1 and {len(state.cart_items)}."
+    if not state.rounds:
+        return "There is no active round. Just continue the conversation."
 
-    removed = state.cart_items.pop(cart_index - 1)
-    total = compute_cart_total(state.cart_items)
-    msg = f"Removed {removed['name']} from your cart."
-    if state.cart_items:
-        msg += f" Your new cart total is {total} {CURRENCY}."
-    else:
-        msg += " Your cart is now empty."
-    return msg
+    last_round = state.rounds[-1]
+    last_round.host_reaction = reaction_summary.strip()
+    state.phase = "reacting"
 
+    logger.info(
+        "Finished round %s with reaction: %s",
+        state.current_round,
+        last_round.host_reaction,
+    )
 
-@function_tool
-async def show_cart(ctx: RunContext[Userdata]) -> str:
-    """
-    Summarize the current cart contents and total amount.
-    """
-    state = ctx.userdata.commerce
-    if not state.cart_items:
-        return "Your cart is empty right now."
-
-    lines = []
-    for idx, it in enumerate(state.cart_items, start=1):
-        lines.append(
-            f"{idx}. {it['quantity']} × {it['name']} — {it['unit_price']} {it['currency']} each"
+    if state.current_round >= state.max_rounds:
+        state.phase = "done"
+        return (
+            "Stored the reaction. All rounds are complete. "
+            "Now move to a closing segment where you summarize the player's overall improv style, "
+            "call out one or two specific scenes, and end the show."
         )
 
-    total = compute_cart_total(state.cart_items)
-    summary = "Here is your current cart:\n" + "\n".join(lines)
-    summary += f"\n\nCart total: {total} {CURRENCY}."
-    summary += " You can remove an item by saying something like 'Remove the second item from my cart'."
-    return summary
-
-
-@function_tool
-async def checkout_cart(
-    ctx: RunContext[Userdata],
-    buyer_name: Annotated[
-        Optional[str],
-        Field(description="Optional buyer name to attach to the demo order."),
-    ] = None,
-) -> str:
-    """
-    Convert the current cart into an order, save it, and clear the cart.
-    """
-    state = ctx.userdata.commerce
-    if not state.cart_items:
-        return "Your cart is empty. Add at least one item before checking out."
-
-    items = []
-    total = 0
-    for it in state.cart_items:
-        qty = int(it["quantity"])
-        unit = int(it["unit_price"])
-        line_total = qty * unit
-        total += line_total
-        items.append(
-            {
-                "product_id": it["product_id"],
-                "name": it["name"],
-                "quantity": qty,
-                "unit_amount": unit,
-                "currency": it.get("currency", CURRENCY),
-                "line_total": line_total,
-            }
-        )
-
-    order = {
-        "id": generate_order_id(),
-        "items": items,
-        "currency": CURRENCY,
-        "total": total,
-        "buyer": {"name": buyer_name or "Guest"},
-        "status": "PENDING",
-        "created_at": datetime.utcnow().isoformat() + "Z",
-    }
-
-    orders = load_orders()
-    orders.append(order)
-    save_orders(orders)
-
-    state.last_order_id = order["id"]
-    state.cart_items.clear()
-
-    desc = ", ".join(f"{it['quantity']} × {it['name']}" for it in order["items"])
+    # More rounds to go
+    state.phase = "intro"
     return (
-        f"Your order {order['id']} has been created for {desc}, with a total of {order['total']} {order['currency']}. "
-        "This is a demo order only—no real payment is processed. Your cart is now empty."
+        "Stored the reaction for this round. "
+        "Tell the player how many rounds are left, then smoothly transition into setting up the next round. "
+        "You may call 'start_next_round' again when you are ready."
     )
 
 
 @function_tool
-async def get_last_order_summary(ctx: RunContext[Userdata]) -> str:
+async def early_exit(
+    ctx: RunContext[Userdata],
+    reason: Annotated[str, Field(description="Short reason why the player wanted to stop the game")],
+) -> str:
     """
-    Return a short summary of the most recent order.
+    Mark the game as ended early.
     """
-    state = ctx.userdata.commerce
-    orders = load_orders()
+    state = ctx.userdata.improv_state
+    state.phase = "done"
 
-    last = None
-    if state.last_order_id:
-        for o in orders:
-            if o["id"] == state.last_order_id:
-                last = o
-                break
-
-    if not last and orders:
-        last = orders[-1]
-
-    if not last:
-        return "You haven't placed any orders yet in this demo."
-
-    items_desc = ", ".join(f"{it['quantity']} × {it['name']}" for it in last["items"])
+    logger.info("Early exit requested: %s", reason)
     return (
-        f"Your most recent order is {last['id']} for {items_desc}, "
-        f"totaling {last['total']} {last['currency']}. Status is {last.get('status', 'PENDING')}."
+        "Mark the game as ended early. Briefly acknowledge the reason, "
+        "thank the player for playing Improv Battle, and end the show warmly."
     )
 
 
 # -----------------------------
 # Agent Definition
 # -----------------------------
-class EcommerceCartAgent(Agent):
+
+
+class ImprovBattleAgent(Agent):
     def __init__(self):
         instructions = f"""
-You are a friendly voice-based shopping assistant for {BRAND_NAME}.
+You are the high-energy host of a TV improv show called "{SHOW_NAME}".
 
-GOAL:
-- Help the user browse a small catalog (mugs, t-shirts, hoodies, accessories).
-- Let them add items to a cart, review the cart, and then check out.
-- Always use the tools instead of inventing products or prices.
+TONE & STYLE:
+- You are witty, energetic, and keep the vibe fun.
+- You explain the rules clearly.
+- Your reactions are realistic and varied:
+  - Sometimes amused, sometimes unimpressed, sometimes pleasantly surprised.
+  - You may lightly tease or critique, but always stay respectful, safe, and constructive.
+- Keep replies concise enough for a spoken experience (usually 2–5 sentences).
 
-BROWSING:
-- When the user asks things like:
-  - "Show me black hoodies under 1600"
-  - "Any coffee mugs around 400 rupees?"
-  - "Do you have developer t-shirts?"
-- Call list_products with an appropriate query, max_price, category, or color.
-- Then read back the top results with index numbers (1, 2, 3, ...).
+GAME FLOW (SINGLE PLAYER):
+- There is exactly one player (contestant) connected by voice.
+- Start the show by:
+  1) Welcoming the audience and the player.
+  2) Briefly explaining the rules: there will be multiple short improv scenarios, they play the character, then you react.
+  3) Asking the player for their name if you don't know it yet, then call 'set_player_name'.
 
-CART:
-- When the user says:
-  - "Add the second one to my cart"
-  - "Add two of the first hoodies"
-- Interpret the reference as an index into the latest list_products results.
-- Call add_to_cart_from_results with that index and quantity.
-- Confirm what was added and the updated cart total.
+ROUNDS:
+- The backend holds an improv_state object with:
+  - player_name, current_round, max_rounds, rounds, and phase.
+- You MUST use the tools to manage state, instead of inventing it yourself:
+  - Use 'set_player_name' to record or change the contestant's name.
+  - Use 'start_next_round' to start each new scenario.
+  - Use 'finish_round' after you have reacted to a scene.
+  - Use 'early_exit' if the player clearly wants to stop the game.
 
-- When they ask:
-  - "What's in my cart?"
-- Call show_cart and read the summary.
+PER ROUND:
+1) Call 'start_next_round' to get a scenario.
+2) Announce it as "Round N", describe the scenario with enthusiasm.
+3) Instruct the player:
+   - to act in character,
+   - to improvise a short scene,
+   - and to say "End scene" when they are done.
+4) Listen to the player's performance.
+5) When they are clearly finished (they say "End scene", or explicitly say they're done):
+   - Give a reaction that mentions specific things you heard.
+   - Include a mix of positive and lightly critical feedback (pacing, commitment, character, creativity).
+   - Then call 'finish_round' with a short text summary of your reaction.
 
-- When they say:
-  - "Remove the second item from my cart"
-- Call remove_from_cart with that index.
+VARIED REACTIONS:
+- Randomly vary your tone across scenes:
+  - Sometimes very supportive and excited.
+  - Sometimes honest and slightly critical ("felt a bit rushed", "could lean more into character").
+  - Sometimes mixed ("great premise, but you could build more detail").
+- Never be abusive, insulting, or mean. This should feel like a friendly show.
 
-CHECKOUT:
-- When the user says:
-  - "Checkout", "Place my order", or "I'm done, place the order"
-- First call show_cart to confirm items if needed.
-- Then call checkout_cart, optionally passing their name if they mention it.
-- After checkout, the cart should be empty.
+CLOSING:
+- After 'finish_round' tells you all rounds are complete, or after an 'early_exit':
+  - Give a short closing monologue:
+    - Summarize what kind of improviser the player seems to be
+      (e.g. stronger at character, absurdity, emotional range, etc.).
+    - Mention 1–2 specific funny or interesting moments from the rounds.
+    - Thank them for playing "{SHOW_NAME}" and say goodbye.
 
-ORDER HISTORY:
-- If they ask:
-  - "What did I just buy?" or "What was my last order?"
-- Call get_last_order_summary and read it out.
+EARLY EXIT:
+- If the user says things like "stop game", "end show", or "I'm done" before all rounds are complete:
+  - Confirm that they want to end.
+  - If they confirm, call 'early_exit' with a short reason (e.g. "player chose to stop after round 2").
+  - Then do a short, polite outro and end the conversation.
 
-STYLE:
-- Be concise, polite, and structured.
-- Never claim to charge real money: explicitly say it's a demo / sandbox order.
-- Keep the conversation focused on discovering products, managing the cart, and placing demo orders.
+KEEP THE CONVERSATION CLEAR:
+- End most of your turns with a clear prompt to the player:
+  - e.g. "Ready for the next scenario?" or "Whenever you're ready, start your scene and say 'End scene' when you're done."
 """
         super().__init__(
             instructions=instructions,
-            tools=[
-                list_products,
-                add_to_cart_from_results,
-                remove_from_cart,
-                show_cart,
-                checkout_cart,
-                get_last_order_summary,
-            ],
+            tools=[set_player_name, start_next_round, finish_round, early_exit],
         )
 
 
 # -----------------------------
-# Prewarm & Entrypoint
+# Prewarm
 # -----------------------------
+
+
 def prewarm(proc: JobProcess):
-    ensure_data_files()
+    # Load VAD once and reuse
     proc.userdata["vad"] = silero.VAD.load()
+
+
+# -----------------------------
+# Entrypoint
+# -----------------------------
 
 
 async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
-    print("Starting Day 9 – Zepto E-commerce Cart Agent")
+    print(f"Starting {SHOW_NAME} – Day 10 Improv Battle Agent")
 
-    commerce_state = CommerceState()
-    userdata = Userdata(commerce=commerce_state)
+    improv_state = ImprovState(
+        player_name=None,
+        current_round=0,
+        max_rounds=3,
+        phase="intro",
+        rounds=[],
+    )
+    userdata = Userdata(improv_state=improv_state)
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
@@ -567,10 +367,10 @@ async def entrypoint(ctx: JobContext):
     userdata.agent_session = session
 
     await session.start(
-        agent=EcommerceCartAgent(),
+        agent=ImprovBattleAgent(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVC()
+            noise_cancellation=noise_cancellation.BVC(),
         ),
     )
 

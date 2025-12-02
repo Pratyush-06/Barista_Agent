@@ -17,20 +17,12 @@
         "unit_amount": 799,
         "currency": "INR",
         "line_total": 799
-      },
-      {
-        "product_id": "accessory-002",
-        "name": "Mechanical Keyboard - Blue Switches",
-        "quantity": 1,
-        "unit_amount": 2999,
-        "currency": "INR",
-        "line_total": 2999
       }
     ],
     "currency": "INR",
-    "total": 5397,
+    "total": 2398,
     "buyer": {
-      "name": "Latus"
+      "name": "Pratius"
     },
     "status": "PENDING",
     "created_at": "2025-11-30T07:26:38.367059Z"
